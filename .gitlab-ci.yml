@@ -1,0 +1,332 @@
+stages:
+  - build
+  - test
+  - push
+  - deploy
+  - post
+
+image: docker:latest
+
+variables:
+
+  APP_HOST_CONTAINER_PORT_MAPPING: "5005:5000"
+#  NGINX_PORT_MAPPING: "85:80"
+  POSTGRES_PORT_MAPPING: "5444:5432"
+#  REDIS_PORT_MAPPING: "6390:6379"
+
+  APP_VERSION: $COMMIT_TAG  # v1.0.0, means version.production.development
+
+  # commits
+  COMMIT_TAG: ${CI_COMMIT_TAG}
+  COMMIT_TIMESTAMP: ${CI_COMMIT_TIMESTAMP}
+
+  # Environment
+  ENV: $ENV
+  SERVER_URL: ${CI_SERVER_URL}
+  ENVIRONMENT_URL: ${CI_ENVIRONMENT_URL}
+
+  # Branch
+  COMMIT_REFERENCE: ${CI_COMMIT_REF_NAME}
+  PIPELINE_IID: ${CI_PIPELINE_IID}
+
+
+  # Deploy
+  DEPLOY_USER: ${CI_DEPLOY_USER}
+  DEPLOY_TOKEN: ${CI_DEPLOY_PASSWORD}
+
+  # Project, Image and container registry
+  PROJECT_URL: ${CI_PROJECT_URL}
+  PROJECT_CONTAINER: ${CI_PROJECT_NAME}
+
+  REGISTRY: ${CI_REGISTRY} # The address of the GitLab Container Registry
+  REGISTRY_IMAGE: ${CI_REGISTRY_IMAGE}  # The address of the project’s Container Registry
+  REGISTRY_USER: ${CI_REGISTRY_USER} # For pushing and pulling image to registry
+  REGISTRY_PASSWORD: ${CI_REGISTRY_PASSWORD} # For pushing and pulling image to registry
+
+  # UTILIZING DOCKER DAEMON
+  # When you use the dind service, you must instruct Docker to talk with
+  # the daemon started inside the service. The daemon is available
+  # with a network connection instead of the default
+  # /var/run/docker.sock socket. Docker 19.03 does this automatically
+  # by setting the DOCKER_HOST in
+  # https://github.com/docker-library/docker/blob/d45051476babc297257df490d22cbd806f1b11e4/19.03/docker-entrypoint.sh#L23-L29
+  #
+  # The 'docker' hostname is the alias of the service container as described at
+  # https://docs.gitlab.com/ee/ci/services/#accessing-the-services.
+  #
+  # Specify to Docker where to create the certificates. Docker
+  # creates them automatically on boot, and creates
+  # `/certs/client` to share between the service and job
+  # container, thanks to volume mount from config.toml
+
+  # This instructs docker to not use cert
+  DOCKER_TLS_CERTDIR: ""
+
+services:
+  - docker:20.10.16-dind
+
+
+before_script:
+  # make sure you set environment variables
+  # So that they can be used in docker compose
+  # - docker info
+  - export PROJECT_CONTAINER=$PROJECT_CONTAINER:$APP_VERSION
+  - export APP_PORT_MAPPING=$APP_PORT_MAPPING
+  - export COMMIT_REFERENCE=$COMMIT_REFERENCE
+  - echo "App version:" $APP_VERSION
+  - echo "App port mapping:" $APP_PORT_MAPPING
+
+  # Environment
+  - echo "Environment:" $ENV
+  - echo "Server url:" $SERVER_URL
+  - echo "Environment url:" $ENVIRONMENT_URL
+
+  # Branch
+  - echo "Commit reference:" $COMMIT_REFERENCE
+
+  # commits
+  - echo "Commit tag:" $COMMIT_TAG
+  - echo "Commit timestamp:" $COMMIT_TIMESTAMP
+
+  # Deploy
+  - echo "Deploy user:" $DEPLOY_USER
+  - echo "Deploy token:" $DEPLOY_TOKEN
+
+  # Project, Image and container registry
+  - echo "Project url:" $PROJECT_URL
+  - echo "Project container(Created):" $PROJECT_CONTAINER
+  - echo "Registry:" $REGISTRY
+  - echo "Registry Image:" $REGISTRY_IMAGE
+  - echo "Registry User:" $REGISTRY_USER
+  - echo "Registry Password:" $REGISTRY_PASSWORD
+  - echo "login gitlab registry started"
+  - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY --username $CI_REGISTRY_USER --password-stdin
+  - echo "login docker registry completed"
+  - echo "Building Project with tag start"
+  - docker build -t $REGISTRY_IMAGE:latest .
+  - echo "Building Project with tag complete"
+
+  # CUSTOM VARIABLES TO BE USED DURING RUNNING
+  - echo "POSTGRES_DB; $POSTGRES_DB"
+  - echo "POSTGRES_USER; $POSTGRES_USER"
+  - echo "POSTGRES_PASSWORD; $POSTGRES_PASSWORD"
+
+
+build project:
+    stage: build
+    script:
+        - echo "Building project start"
+        - echo "Image $REGISTRY_IMAGE:$COMMIT_TAG"
+#        - docker build --tag $REGISTRY_IMAGE:$COMMIT_TAG .
+#        - docker build -t registry.gitlab.com/barnabasaugustino/entry_requirements:latest .
+        - echo "building project complete"
+
+
+unit test:
+  stage: test
+  before_script:
+    - echo 'start docker image with name in the same database network'
+    - echo "Building Project with tag start"
+    - docker build -t $REGISTRY_IMAGE:unittest -f DockerfileTest .
+    - echo "Building Project with tag complete"
+    - docker stop admission-requirements-server-unittest || FAILURE=true # stop running container if it is running
+  script:
+    - echo "unit testing project start"
+    - echo "ENVIRONMENT VARIABLES"
+    - echo "ENV; $ENV_TEST"
+    - echo "POSTGRES_DB; $POSTGRES_DB"
+    - echo "POSTGRES_USER; $POSTGRES_USER"
+    - echo "POSTGRES_PASSWORD; $POSTGRES_PASSWORD"
+    - echo 'UNIT-TEST - start'
+    - docker run --rm -d --name admission-requirements-server-unittest -p 5007:5005 -e ENV=TEST -e DATABASE_HOST=admission-requirements-db -e DATABASE_PORT=5432 -e POSTGRES_DB=admission_requirements -e POSTGRES_USER=requirements_user -e POSTGRES_PASSWORD=requirements_user $REGISTRY_IMAGE:unittest
+    - echo 'UNIT-TEST - completed'
+  after_script:
+    - echo "stopping testing container start"
+    - docker container stop admission-requirements-server-unittest
+    - echo "stopping testing container complete"
+    - echo "removing test image start"
+    - docker rmi $REGISTRY_IMAGE:unittest
+    - echo "removing testing image complete"
+
+
+code quality test:
+  stage: test
+  before_script:
+    - echo 'start docker image with name in the same database network'
+    - echo "Building Project with tag start"
+    - docker build -t $REGISTRY_IMAGE:lint -f DockerfileLint .
+    - echo "Building Project with tag complete"
+    - docker stop admission-requirements-server-lint || FAILURE=true # stop running container if it is running
+  script:
+    - echo "unit testing project start"
+    - echo 'Lint test - start'
+    - echo "ENVIRONMENT VARIABLES"
+    - echo "ENV; $ENV_TEST"
+    - echo "POSTGRES_DB; $POSTGRES_DB"
+    - echo "POSTGRES_USER; $POSTGRES_USER"
+    - echo "POSTGRES_PASSWORD; $POSTGRES_PASSWORD"
+    - docker run --rm -d --name admission-requirements-server-lint -p 5007:5005 -e ENV=TEST -e DATABASE_HOST=admission-requirements-db -e DATABASE_PORT=5432 -e POSTGRES_DB=admission_requirements -e POSTGRES_USER=requirements_user -e POSTGRES_PASSWORD=requirements_user $REGISTRY_IMAGE:lint
+    - echo 'Lint - completed'
+  after_script:
+    - echo "stopping testing container start"
+    - docker container stop admission-requirements-server-lint
+    - echo "stopping testing container complete"
+    - echo "removing test image start"
+    - docker rmi $REGISTRY_IMAGE:lint
+    - echo "removing testing image complete"
+
+
+push to registry:
+  # Need separate dockerfile with gunicorn command
+  stage: push
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - echo "Building Project with tag start"
+    - docker build -t $REGISTRY_IMAGE:$COMMIT_TAG .
+    - echo "Building Project with tag complete"
+    - echo "Pushing image to registry start"
+    - echo "Image; $REGISTRY_IMAGE:$COMMIT_TAG"
+    - docker push $REGISTRY_IMAGE:$COMMIT_TAG
+    - echo "the latest version was creates using before_script"
+    - docker push $REGISTRY_IMAGE:latest
+    - echo "Pushing image to registry complete"
+
+
+deploy to development:
+  # Need separate dockerfile with gunicorn command
+    stage: deploy
+    rules:
+      - if: $CI_COMMIT_TAG
+      - if: $CI_COMMIT_BRANCH == "development"
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    when: manual
+    script:
+      - echo "USE DOCKER COMPOSE FILE IN DEVELOPMENT ENVIRONMENT"
+      - echo "deploying to development start"
+      - echo "user ssh to access and execute commands in script file which"
+      - echo "pull image from gitlab"
+      - echo stop and remove a running container"
+      - echo "ENVIRONMENT VARIABLES"
+      - echo "ENV; $ENV_TEST"
+      - echo "POSTGRES_DB; $POSTGRES_DB"
+      - echo "POSTGRES_USER; $POSTGRES_USER"
+      - echo "POSTGRES_PASSWORD; $POSTGRES_PASSWORD"
+      - echo "run the pulled image with proper environment variables"
+
+deploy to documentation:
+  # Need separate dockerfile with gunicorn command
+    stage: deploy
+    rules:
+      - if: $CI_COMMIT_TAG
+      - if: $CI_COMMIT_BRANCH == "documentation"
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    when: manual
+    script:
+        - echo "deploying documentation start"
+        - echo "user ssh to access and execute commands in script file which"
+        - echo "login, pull image from gitlab, stop running container, remove"
+        - echo "container, remove image, then run the new one and run in the documentation server"
+        - echo "deploying documentation  complete"
+        - echo stop and remove a running container"
+        - echo "ENVIRONMENT VARIABLES"
+        - echo "ENV; $ENV_DOCUMENTATION"
+        - echo "POSTGRES_DB; $POSTGRES_DB"
+        - echo "POSTGRES_USER; $POSTGRES_USER"
+        - echo "POSTGRES_PASSWORD; $POSTGRES_PASSWORD"
+        - echo "run the pulled image with proper environment variables"
+
+deploy to staging:
+  # Need separate dockerfile with gunicorn command
+    stage: deploy
+    rules:
+      - if: $CI_COMMIT_TAG
+      - if: $CI_COMMIT_BRANCH == "staging"
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    when: manual
+    script:
+        - echo "deploying to staging start"
+        - echo "user ssh to access and execute commands in script file which"
+        - echo "login, pull image from gitlab, stop running container, remove"
+        - echo "container, remove image, then run the new one and run in the staging server"
+        - echo "deploying to staging complete"
+        - echo "ENVIRONMENT VARIABLES"
+        - echo "ENV; $ENV_STAGING"
+        - echo "POSTGRES_DB; $POSTGRES_DB"
+        - echo "POSTGRES_USER; $POSTGRES_USER"
+        - echo "POSTGRES_PASSWORD; $POSTGRES_PASSWORD"
+        - echo "run the pulled image with proper environment variables"
+
+deploy to demo:
+  # Need separate dockerfile with gunicorn command
+    stage: deploy
+    rules:
+      - if: $CI_COMMIT_TAG
+      - if: $CI_COMMIT_BRANCH == "demo"
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    when: manual
+    script:
+        - echo "deploying to demo start"
+        - echo "user ssh to access and execute commands in script file which"
+        - echo "login, pull image from gitlab, stop running container, remove"
+        - echo "container, remove image, then run the new one and run in the demo server"
+        - echo "ENVIRONMENT VARIABLES"
+        - echo "ENV; $ENV_DEMO"
+        - echo "POSTGRES_DB; $POSTGRES_DB"
+        - echo "POSTGRES_USER; $POSTGRES_USER"
+        - echo "POSTGRES_PASSWORD; $POSTGRES_PASSWORD"
+        - echo "run the pulled image with proper environment variables"
+
+deploying to production:
+  # Need separate dockerfile with gunicorn command
+    stage: deploy
+    rules:
+      - if: $CI_COMMIT_TAG
+      - if: $CI_COMMIT_BRANCH == "main"
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    when: manual
+    script:
+        - echo "deploying to production start"
+        - echo "user ssh to access and execute commands in script file which"
+        - echo "login, pull image from gitlab, stop running container, remove"
+        - echo "container, remove image, then run the new one and run in the production server"
+        - echo "ENVIRONMENT VARIABLES"
+        - echo "ENV; $ENV_PROD"
+        - echo "POSTGRES_DB; $POSTGRES_DB"
+        - echo "POSTGRES_USER; $POSTGRES_USER"
+        - echo "POSTGRES_PASSWORD; $POSTGRES_PASSWORD"
+        - echo "run the pulled image with proper environment variables"
+        - echo "deploying to production complete"
+
+Post deploy:
+  # Need separate dockerfile with gunicorn command
+    stage: post
+    rules:
+      - if: $CI_COMMIT_TAG
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        allow_failure: true
+    when: manual
+    script:
+        - echo "post deploy test start"
+        - echo "post deploy complete"
+
+clean unused resources:
+  # Need to clean at every stage
+  stage: post
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      allow_failure: true
+  when: manual
+  script:
+    - echo "Prune build cache start"
+    - echo "remove images with none tags"
+    #- docker builder prune -a -f
+    - echo "Prone build cache complete"
+    - echo "prune unused images start"
+    # - docker image prune -a -f
+    # - docker volume prune -y
+    - echo "prune unused images complete"
+
+

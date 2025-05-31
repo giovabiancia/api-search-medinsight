@@ -1,0 +1,57 @@
+.git
+.idea
+*.pyc
+
+logs
+design
+lab
+instance
+design
+venv
+.ipynb_checkpoints
+.pytest_cache/
+htmlcov/
+
+# Environment variables
+.env
+
+dist/
+build/
+*.egg-info/
+
+
+# byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+
+# tests and coverage
+*.pytest_cache
+.coverage
+
+# database & logs
+*.db
+*.sqlite3
+*.log
+log
+
+# Other file
+*.md
+*.MD
+
+
+# venv
+env
+venv
+
+# other
+.DS_Store
+
+# sphinx docs
+_build
+_static
+_templates
+
+# javascript
+package-lock.json
+.vscode/symbols.json
