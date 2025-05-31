@@ -24,8 +24,12 @@ def get_doctors_query(doctor_id=None, city=None, profession=None):
     """
     if doctor_id:
         # Retrieve doctor's information
-        query = """
-                Retrieve doctor's information
+        query = f"""
+                SELECT 
+                    doctor_id, salutation, given_name, surname, full_name, gender, 
+                    rate, branding, has_slots, allow_questions, url
+                FROM doctors.doctors 
+                WHERE doctor_id = {doctor_id}
                 """
 
     elif city and profession:
