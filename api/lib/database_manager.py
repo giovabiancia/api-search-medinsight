@@ -6,10 +6,9 @@
 @github:        https://gitlab.com/barnabasaugustino/entry_requirements.git
 @Domain name
 @Hostname
-@Description:   This document contains database utilities for entry_requirements project
+@Description:   Database manager semplificato per più paesi
 """
 
-# External dependencies
 import click
 from flask import current_app, g, request, abort
 from flask.cli import with_appcontext
@@ -17,13 +16,12 @@ import time
 import os
 import psycopg2
 import psycopg2.extras
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from dotenv import dotenv_values
-# Internal dependencies
 from api.lib import error_handlers, util, loggerManager
 
-
 config = dotenv_values(".env")
+
 class DbInitializePostgres(object):
     def __init__(self, host=None, port=None, user=None, password=None, db_name=None):
         self.db_name = db_name
@@ -32,35 +30,24 @@ class DbInitializePostgres(object):
         self.user = user
         self.password = password
         self.engine = self.conn = self.cursor = None
-        self.db_connected = self.server_connected = False
-
-    def connect_db_server(self):
-        for i in range(5):
-            self.conn = psycopg2.connect(host=self.host, port=self.port, user=self.user, password=self.password)
-            if self.conn:
-                self.server_connected = True
-                break
-            time.sleep(.5)
-
-        self.conn.autocommit = True
-        self.cursor = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        return self
+        self.db_connected = False
 
     def connect_db(self):
-        loggerManager.logger.debug(f"host: {self.host}")
-        loggerManager.logger.debug(f"port: {self.port}")
-        loggerManager.logger.debug(f"db name: {self.db_name}")
-        loggerManager.logger.debug(f"user: {self.user}")
-        loggerManager.logger.debug(f"password: {self.password}")
+        loggerManager.logger.debug(f"Connecting to: {self.host}:{self.port}/{self.db_name}")
         engine_str = f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.db_name}"
 
         for i in range(5):
-            self.conn = psycopg2.connect(host=self.host, port=self.port, dbname=self.db_name, user=self.user,
-                                         password=self.password)
-            if self.conn:
-                self.db_connected = True
-                break
-            time.sleep(.5)
+            try:
+                self.conn = psycopg2.connect(host=self.host, port=self.port, dbname=self.db_name, 
+                                           user=self.user, password=self.password)
+                if self.conn:
+                    self.db_connected = True
+                    break
+            except:
+                time.sleep(.5)
+
+        if not self.db_connected:
+            raise Exception(f"Cannot connect to database {self.db_name}")
 
         self.engine = create_engine(engine_str)
         self.conn.autocommit = True
@@ -68,43 +55,22 @@ class DbInitializePostgres(object):
         return self
 
     def close_conn(self):
-        self.conn.close()
+        if self.cursor:
+            self.cursor.close()
+        if self.conn:
+            self.conn.close()
         if self.engine:
             self.engine.dispose()
         return self
 
-    def create_db(self):
-        self.connect_db_server()
-        self.cursor.execute(f'DROP DATABASE IF EXISTS {self.db_name}')
-        self.cursor.execute(f'CREATE DATABASE {self.db_name}')
-        self.close_conn()
-        return self
-
-    def create_tables(self):
-        self.connect_db()
-        queries = os.path.join('setup_tables.sql')
-        # queries = os.path.join('./', 'sql', 'create_tables.sql')
-        with open(queries, 'r') as f:
-            self.cursor.execute(f.read())
-        self.close_conn()
-        return self
-
-
-class ExecuteQueries(DbInitializePostgres):
+class ExecuteQueries(object):
     def __init__(self):
-        super(ExecuteQueries, self).__init__()
         self.query_result = None
 
     def execute_query(self, query):
-        """
-        :Description: Execute only insert or update query commands
-        :engine: str, an engine to perform a query
-        :param query: str, query to be executed
-        :return: Inserted or updated record
-        """
         try:
             if query:
-                g.cursor.execute(query)  # execute query
+                g.cursor.execute(query)
                 self.query_result = g.cursor.fetchall()
                 if len(self.query_result) == 1:
                     self.query_result = dict(self.query_result[0])
@@ -112,81 +78,78 @@ class ExecuteQueries(DbInitializePostgres):
                     self.query_result = [dict(record) for record in self.query_result]
                 else:
                     self.query_result = None
-
         except Exception as e:
-            err_msg = f'Error in execute_query: {query}: {e}'
+            err_msg = f'Error in execute_query: {e}'
             loggerManager.logger.error(err_msg)
-            err_msg = f'Server Error'
-            # close connection
-            if g.get("connected"):
-                close_db(g.engine, g.conn, g.cursor)
-                g.db_connected = False
             if request.is_json:
-                raise error_handlers.InvalidAPIUsage(message=err_msg, status_code=500)
+                raise error_handlers.InvalidAPIUsage(message="Server Error", status_code=500)
             else:
-                abort(err_msg)
+                abort(500)
         return self
 
-
-def connect_db():
-    """Returns engine, connector and cursor"""
-    # Instantiate DbInitializePostgres
-    # Define global variables
-    host = os.environ.get('DATABASE_HOST') if os.environ.get('DATABASE_HOST') else config.get('DATABASE_HOST')
-    port = os.environ.get('DATABASE_PORT') if os.environ.get('DATABASE_PORT') else config.get('DATABASE_PORT')
-    db_name = os.environ.get('DB_NAME') if os.environ.get('DB_NAME') else config.get('DB_NAME')
-    user = os.environ.get('DATABASE_USER') if os.environ.get('DATABASE_USER') else config.get('DATABASE_USER')
-    password = os.environ.get('DATABASE_PASSWORD') if os.environ.get('DATABASE_PASSWORD') else config.get('DATABASE_PASSWORD')
-
-    pg = DbInitializePostgres(host=host, port=port, user=user, password=password, db_name=db_name)
+def connect_db(country='IT'):
+    """Connette al database del paese specificato"""
+    from api.lib.config_manager import Configuration
+    db_config = Configuration.get_db_config(country)
+    
+    pg = DbInitializePostgres(
+        host=db_config['host'],
+        port=db_config['port'],
+        user=db_config['user'],
+        password=db_config['password'],
+        db_name=db_config['name']
+    )
     pg.connect_db()
     return pg.engine, pg.conn, pg.cursor
 
-
 def close_db(engine, connector, cursor):
-    """Close database and dispose engine"""
-    cursor.close()
-    connector.commit()
-    connector.close()
+    """Chiude connessione database"""
+    if cursor:
+        cursor.close()
+    if connector:
+        connector.commit()
+        connector.close()
     if engine:
         engine.dispose()
-    return
-
 
 def init_db():
-    # Instantiate DbInitializePostgres
-    # Define global variables come from .env file
-    host = os.environ.get('DATABASE_HOST') if os.environ.get('DATABASE_HOST') else config.get('DATABASE_HOST')
-    port = os.environ.get('DATABASE_PORT') if os.environ.get('DATABASE_PORT') else config.get('DATABASE_PORT')
-    db_name = os.environ.get('DB_NAME') if os.environ.get('DB_NAME') else config.get('DB_NAME')
-    user = os.environ.get('DATABASE_USER') if os.environ.get('DATABASE_USER') else config.get('DATABASE_USER')
-    password = os.environ.get('DATABASE_PASSWORD') if os.environ.get('DATABASE_PASSWORD') else config.get('DATABASE_PASSWORD')
+    """Inizializza database per entrambi i paesi"""
+    # Inizializza Germania
+    try:
+        from api.lib.config_manager import Configuration
+        db_config = Configuration.get_db_config('DE')
+        pg = DbInitializePostgres(**db_config)
+        pg.connect_db()
+        # Crea tabelle se necessario
+        queries = os.path.join('setup_tables.sql')
+        if os.path.exists(queries):
+            with open(queries, 'r') as f:
+                pg.cursor.execute(f.read())
+        pg.close_conn()
+        loggerManager.logger.info("Database Germania inizializzato")
+    except Exception as e:
+        loggerManager.logger.error(f"Errore inizializzazione DB Germania: {e}")
 
-    pg = DbInitializePostgres(host=host, port=port, user=user, password=password, db_name=db_name)
-    # pg.create_db()  # creates entry_requirements database
-    # creates initial tables
-    pg.create_tables()
-
-
-if __name__ == '__main__':
-    # Running this module as script
-    print('Initializing the database started.')
-    init_db()
-    print('Initialized the database.')
+    # Inizializza Italia
+    try:
+        db_config = Configuration.get_db_config('IT')
+        pg = DbInitializePostgres(**db_config)
+        pg.connect_db()
+        queries = os.path.join('setup_tables.sql')
+        if os.path.exists(queries):
+            with open(queries, 'r') as f:
+                pg.cursor.execute(f.read())
+        pg.close_conn()
+        loggerManager.logger.info("Database Italia inizializzato")
+    except Exception as e:
+        loggerManager.logger.error(f"Errore inizializzazione DB Italia: {e}")
 
 @click.command('init-db')
 @with_appcontext
 def init_db_command():
-    """
-    parameters: str, country_code iso_alpha_3 describing a country
-    server: str, database server to which we want to create a database
-    :return:
-    """
-    click.echo('Initializing the database started.')
+    click.echo('Inizializzazione database...')
     init_db()
-    click.echo('Initialized the database.')
-
+    click.echo('Database inizializzati.')
 
 def init_app(app):
-    # app.teardown_appcontext(pg.close_conn(pg.db_conn))
     app.cli.add_command(init_db_command)

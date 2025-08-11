@@ -7,7 +7,7 @@
 @gitlab:        https://gitlab.com/projects28/medinsights-be.git
 @domain name:
 @Hostname:      DigitalOcean
-@Description:
+@Description:   Configurazione semplificata per database multipli
 """
 import os
 from dotenv import dotenv_values
@@ -15,79 +15,57 @@ from dotenv import dotenv_values
 config = dotenv_values(".env")
 
 class Configuration(object):
-    """This is a base class from all configuration classes"""
-    # python -c 'import secrets; print(secrets.token_hex())'
+    """Classe base per tutte le configurazioni"""
     SECRET_KEY = os.environ.get('SECRET_KEY') if os.environ.get('SECRET_KEY') else config.get('SECRET_KEY')
     ENV = os.environ.get('ENV') if os.environ.get('ENV') else config.get('ENV')
     TEMPLATE_AUTO_RELOAD = True
     ALLOWED_PHOTO_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
     ALLOWED_DOCUMENT_EXTENSIONS = {'pdf'}
-    # STATIC_CONTENTS_HOST = os.environ.get('entry_requirements_static_contents_host')
-    # STATIC_CONTENTS_PORT = os.environ.get('entry_requirements_app_static_contents_port')
     MAX_CONTENT_LENGTH = 20 * 1000 * 1000
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI') if os.environ.get('DATABASE_URI') else config.get('DATABASE_URI')
-    DB_SERVER = os.environ.get('DB_ENGINE') if os.environ.get('DB_ENGINE') else config.get('DB_ENGINE')
-    DB_NAME = os.environ.get('DB_NAME') if config.get('DB_NAME') else config.get('DB_NAME')
-    DATABASE_PARAM = {
-        'postgresql': {
-            'host': os.environ.get('DATABASE_HOST') if os.environ.get('DATABASE_HOST') else config.get('DATABASE_HOST'),
-            'port': os.environ.get('DATABASE_PORT') if os.environ.get('DATABASE_PORT') else config.get('DATABASE_PORT'),
-            'user': os.environ.get('DATABASE_USER') if os.environ.get('DATABASE_USER') else config.get('DATABASE_USER'),
-            'password': os.environ.get('DATABASE_PASSWORD') if os.environ.get('DATABASE_PASSWORD') else config.get('DATABASE_PASSWORD')
-        }
+    # Database Germania
+    DE_DATABASE = {
+        'host': os.environ.get('DE_DB_HOST') or config.get('DE_DB_HOST', 'localhost'),
+        'port': os.environ.get('DE_DB_PORT') or config.get('DE_DB_PORT', '5432'),
+        'user': os.environ.get('DE_DB_USER') or config.get('DE_DB_USER', 'user'),
+        'password': os.environ.get('DE_DB_PASSWORD') or config.get('DE_DB_PASSWORD', 'password'),
+        'name': os.environ.get('DE_DB_NAME') or config.get('DE_DB_NAME', 'medinsights_de')
     }
 
-class LocalConfiguration(Configuration):
-    """Contains environmental variables for local configuration"""
-    DEBUG = config.get('DEBUG')
-    # SERVER_NAME SHOULD NOT BE SET IN LOCAL
-    # SERVER_NAME = os.environ.get('SERVER_NAME')
-    # SESSION_COOKIE_DOMAIN = os.environ.get('SERVER_NAME')
+    # Database Italia
+    IT_DATABASE = {
+        'host': os.environ.get('IT_DB_HOST') or config.get('IT_DB_HOST', 'localhost'),
+        'port': os.environ.get('IT_DB_PORT') or config.get('IT_DB_PORT', '5432'),
+        'user': os.environ.get('IT_DB_USER') or config.get('IT_DB_USER', 'user'),
+        'password': os.environ.get('IT_DB_PASSWORD') or config.get('IT_DB_PASSWORD', 'password'),
+        'name': os.environ.get('IT_DB_NAME') or config.get('IT_DB_NAME', 'medinsights_it')
+    }
 
+    @staticmethod
+    def get_db_config(country):
+        if country.upper() == 'DE':
+            return Configuration.DE_DATABASE
+        else:  # Default IT
+            return Configuration.IT_DATABASE
+
+class LocalConfiguration(Configuration):
+    DEBUG = config.get('DEBUG')
 
 class DevelopmentConfiguration(Configuration):
-    """Contains environment variables for development configuration"""
     DEBUG = True
-    # SERVER_NAME = os.environ.get('SERVER_NAME')
-    # SESSION_COOKIE_DOMAIN = os.environ.get('SERVER_NAME')
-
 
 class TestingConfiguration(Configuration):
-    """Contains environment variables for staging Configuration"""
     TESTING = True
     DEBUG = True
-    # SERVER_NAME SHOULD NOT BE SET IN LOCAL AND TESTING ENV
-    # SERVER_NAME = os.environ.get('SERVER_NAME')
-    # SESSION_COOKIE_DOMAIN = os.environ.get('SERVER_NAME')
-
 
 class StagingConfiguration(Configuration):
-    """Contains environment variable for staging configuration"""
-    # It uses inherited configuration
-    # SERVER_NAME = os.environ.get('SERVER_NAME')
-    # SESSION_COOKIE_DOMAIN = os.environ.get('SERVER_NAME')
-
+    pass
 
 class DemoConfiguration(Configuration):
-    """Contains environment variable for demo configuration"""
-    # It uses inherited configuration
-    # SERVER_NAME SHOULD NOT BE SET IN LOCAL
-    # SERVER_NAME = os.environ.get('SERVER_NAME')
-    # SESSION_COOKIE_DOMAIN = os.environ.get('SERVER_NAME')
-
+    pass
 
 class ProductionConfiguration(Configuration):
-    """Contains environment variables for staging configuration"""
-    # It uses inherited configuration
-    # SERVER_NAME = os.environ.get('SERVER_NAME')
-    # SESSION_COOKIE_DOMAIN = os.environ.get('SERVER_NAME')
-
+    pass
 
 class APIConfiguration(Configuration):
-    """Contains environment variables for staging configuration"""
-    # It uses inherited configuration
-    # SERVER_NAME = os.environ.get('SERVER_NAME')
-    # SESSION_COOKIE_DOMAIN = os.environ.get('SERVER_NAME')
-
-
+    pass
