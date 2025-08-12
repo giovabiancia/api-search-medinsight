@@ -163,21 +163,34 @@ def connect_all_country_dbs():
     connections = {}
     try:
         db_params = current_app.config.get('DATABASE_PARAMS', {})
+        loggerManager.logger.info(f"Found database parameters for countries: {list(db_params.keys())}")
+        
         for country_code in db_params.keys():
             try:
+                db_config = db_params[country_code]
+                
+                # Check if all required config is present
+                required_fields = ['host', 'port', 'user', 'password', 'db_name']
+                if not all(db_config.get(field) for field in required_fields):
+                    loggerManager.logger.warning(f"Incomplete database configuration for country {country_code}")
+                    continue
+                    
+                loggerManager.logger.info(f"Attempting to connect to {country_code} database at {db_config.get('host')}:{db_config.get('port')}")
+                
                 engine, conn, cursor = connect_db(country_code)
                 connections[country_code.lower()] = {
                     'engine': engine,
                     'conn': conn,
                     'cursor': cursor
                 }
-                loggerManager.logger.info(f"Connected to database for country: {country_code}")
+                loggerManager.logger.info(f"Successfully connected to database for country: {country_code}")
             except Exception as e:
                 loggerManager.logger.error(f"Failed to connect to database for country {country_code}: {e}")
                 
     except Exception as e:
         loggerManager.logger.error(f"Error connecting to country databases: {e}")
     
+    loggerManager.logger.info(f"Successfully connected to {len(connections)} databases: {list(connections.keys())}")
     return connections
 
 

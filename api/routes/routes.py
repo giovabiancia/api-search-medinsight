@@ -12,7 +12,7 @@
 
 from flask import Flask, request, Blueprint, session, g, flash, render_template, jsonify, current_app, abort, redirect, \
     url_for, make_response
-from api.lib import error_handlers, util, worker
+from api.lib import error_handlers, util, worker, loggerManager
 
 bp = Blueprint("api", __name__)
 
@@ -43,7 +43,7 @@ def index():
 def doctors():
     """
     Get doctors with optional country parameter
-    :return: JSON response with doctors data
+    :return: JSON response with doctors data matching original API structure
     """
     # Get request data
     request_data = util.process_request(request)
@@ -57,16 +57,27 @@ def doctors():
         error_message = "Invalid country. Supported countries: DE, IT"
         raise error_handlers.InvalidAPIUsage(message=error_message, status_code=400)
     
+    # Check if we have database connections
+    if not g.get('db_connected', False):
+        error_message = "Database not available"
+        raise error_handlers.InvalidAPIUsage(message=error_message, status_code=503)
+    
+    # Check if specific country database is available
+    country_cursor_attr = f'cursor_{country.lower()}'
+    if not hasattr(g, country_cursor_attr):
+        error_message = f"Database for country {country} not available"
+        raise error_handlers.InvalidAPIUsage(message=error_message, status_code=503)
+    
     # Get doctors data
     med_worker = worker.Doctors(request_data, country_code=country)
     med_worker.get_doctors()
     
     if not med_worker.returned_doctors:
-        error_message = "Could not find doctors"
+        loggerManager.logger.warning("Could not find doctors")
         
+    # Return response in original API format
     output = {
-        "country": country,
-        "doctors": med_worker.doctors_returned if med_worker.doctors_returned else "doctors"
+        "items": med_worker.doctors_returned if med_worker.doctors_returned else []
     }
     return jsonify(output)
 
@@ -76,13 +87,24 @@ def doctors_by_country(country):
     """
     Get doctors for specific country via URL path
     :param country: Country code (de, it)
-    :return: JSON response with doctors data
+    :return: JSON response with doctors data matching original API structure
     """
     # Validate and normalize country
     country = country.upper()
     if country not in ['DE', 'IT']:
         error_message = "Invalid country. Supported countries: DE, IT"
         raise error_handlers.InvalidAPIUsage(message=error_message, status_code=404)
+    
+    # Check if we have database connections
+    if not g.get('db_connected', False):
+        error_message = "Database not available"
+        raise error_handlers.InvalidAPIUsage(message=error_message, status_code=503)
+    
+    # Check if specific country database is available
+    country_cursor_attr = f'cursor_{country.lower()}'
+    if not hasattr(g, country_cursor_attr):
+        error_message = f"Database for country {country} not available"
+        raise error_handlers.InvalidAPIUsage(message=error_message, status_code=503)
     
     # Get request data
     request_data = util.process_request(request)
@@ -93,11 +115,11 @@ def doctors_by_country(country):
     med_worker.get_doctors()
     
     if not med_worker.returned_doctors:
-        error_message = "Could not find doctors"
+        loggerManager.logger.warning("Could not find doctors")
         
+    # Return response in original API format
     output = {
-        "country": country,
-        "doctors": med_worker.doctors_returned if med_worker.doctors_returned else "doctors"
+        "items": med_worker.doctors_returned if med_worker.doctors_returned else []
     }
     return jsonify(output)
 

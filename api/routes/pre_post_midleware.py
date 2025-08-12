@@ -52,7 +52,7 @@ def connect_to_db():
     """Connect to all country databases"""
     loggerManager.logger.info("Connecting to databases")
     
-    # Connect to all country databases
+    # Try to connect to all country databases
     connections = database_manager.connect_all_country_dbs()
     
     # Store connections in Flask's g object
@@ -60,21 +60,23 @@ def connect_to_db():
         setattr(g, f'engine_{country}', conn_data['engine'])
         setattr(g, f'conn_{country}', conn_data['conn'])
         setattr(g, f'cursor_{country}', conn_data['cursor'])
+        loggerManager.logger.info(f"Connected to {country} database")
     
-    # Set default connection (first available or fallback to legacy)
+    # Set default connection (first available)
     if connections:
         first_country = list(connections.keys())[0]
         g.engine = getattr(g, f'engine_{first_country}')
         g.conn = getattr(g, f'conn_{first_country}')
         g.cursor = getattr(g, f'cursor_{first_country}')
+        loggerManager.logger.info(f"Set default connection to: {first_country}")
     else:
-        # Fallback to legacy connection
-        try:
-            g.engine, g.conn, g.cursor = database_manager.connect_db()
-        except Exception as e:
-            loggerManager.logger.error(f"Failed to establish any database connection: {e}")
+        # No country databases available - this is OK, will handle in routes
+        loggerManager.logger.warning("No country databases configured or available")
+        g.engine = None
+        g.conn = None
+        g.cursor = None
     
-    g.db_connected = True
+    g.db_connected = bool(connections)
 
 
 @bp.after_app_request
