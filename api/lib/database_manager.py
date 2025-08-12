@@ -56,12 +56,17 @@ class DbInitializePostgres(object):
         engine_str = f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.db_name}"
 
         for i in range(5):
-            self.conn = psycopg2.connect(host=self.host, port=self.port, dbname=self.db_name, user=self.user,
-                                         password=self.password)
-            if self.conn:
-                self.db_connected = True
-                break
-            time.sleep(.5)
+            try:
+                self.conn = psycopg2.connect(host=self.host, port=self.port, dbname=self.db_name, user=self.user,
+                                             password=self.password)
+                if self.conn:
+                    self.db_connected = True
+                    break
+            except Exception as e:
+                loggerManager.logger.warning(f"Connection attempt {i+1} failed: {e}")
+                if i == 4:  # Last attempt
+                    raise e
+                time.sleep(.5)
 
         self.engine = create_engine(engine_str)
         self.conn.autocommit = True
@@ -69,9 +74,18 @@ class DbInitializePostgres(object):
         return self
 
     def close_conn(self):
-        self.conn.close()
-        if self.engine:
-            self.engine.dispose()
+        try:
+            if self.conn and not self.conn.closed:
+                self.conn.close()
+        except Exception as e:
+            loggerManager.logger.debug(f"Error closing connection: {e}")
+        
+        try:
+            if self.engine:
+                self.engine.dispose()
+        except Exception as e:
+            loggerManager.logger.debug(f"Error disposing engine: {e}")
+        
         return self
 
     def create_db(self):
@@ -137,13 +151,13 @@ def get_database_config(country):
     if country in databases:
         return databases[country]
     
-    # Fallback to default configuration
+    # Fallback to Italy configuration for default
     return {
-        'host': os.environ.get('DATABASE_HOST') if os.environ.get('DATABASE_HOST') else config.get('DATABASE_HOST'),
-        'port': os.environ.get('DATABASE_PORT') if os.environ.get('DATABASE_PORT') else config.get('DATABASE_PORT'),
-        'db_name': os.environ.get('DB_NAME') if os.environ.get('DB_NAME') else config.get('DB_NAME'),
-        'user': os.environ.get('DATABASE_USER') if os.environ.get('DATABASE_USER') else config.get('DATABASE_USER'),
-        'password': os.environ.get('DATABASE_PASSWORD') if os.environ.get('DATABASE_PASSWORD') else config.get('DATABASE_PASSWORD')
+        'host': os.environ.get('IT_DB_HOST') if os.environ.get('IT_DB_HOST') else config.get('IT_DB_HOST'),
+        'port': os.environ.get('IT_DB_PORT') if os.environ.get('IT_DB_PORT') else config.get('IT_DB_PORT'),
+        'db_name': os.environ.get('IT_DB_NAME') if os.environ.get('IT_DB_NAME') else config.get('IT_DB_NAME'),
+        'user': os.environ.get('IT_DB_USER') if os.environ.get('IT_DB_USER') else config.get('IT_DB_USER'),
+        'password': os.environ.get('IT_DB_PASSWORD') if os.environ.get('IT_DB_PASSWORD') else config.get('IT_DB_PASSWORD')
     }
 
 
@@ -180,33 +194,58 @@ def close_db_for_country(country='default'):
     conn = getattr(g, f'conn_{country}', None)
     cursor = getattr(g, f'cursor_{country}', None)
     
-    if cursor:
-        cursor.close()
-    if conn:
-        conn.commit()
-        conn.close()
-    if engine:
-        engine.dispose()
+    try:
+        if cursor and not cursor.closed:
+            cursor.close()
+    except Exception as e:
+        loggerManager.logger.debug(f"Error closing cursor for {country}: {e}")
+    
+    try:
+        if conn and not conn.closed:
+            conn.commit()
+            conn.close()
+    except Exception as e:
+        loggerManager.logger.debug(f"Error closing connection for {country}: {e}")
+    
+    try:
+        if engine:
+            engine.dispose()
+    except Exception as e:
+        loggerManager.logger.debug(f"Error disposing engine for {country}: {e}")
 
 
 def close_db(engine, connector, cursor):
     """Close database and dispose engine (backward compatibility)"""
-    cursor.close()
-    connector.commit()
-    connector.close()
-    if engine:
-        engine.dispose()
+    try:
+        if cursor and not cursor.closed:
+            cursor.close()
+    except Exception as e:
+        loggerManager.logger.debug(f"Error closing cursor: {e}")
+    
+    try:
+        if connector and not connector.closed:
+            connector.commit()
+            connector.close()
+    except Exception as e:
+        loggerManager.logger.debug(f"Error closing connector: {e}")
+    
+    try:
+        if engine:
+            engine.dispose()
+    except Exception as e:
+        loggerManager.logger.debug(f"Error disposing engine: {e}")
+    
     return
 
 
 def init_db():
     # Instantiate DbInitializePostgres
-    # Define global variables come from .env file
-    host = os.environ.get('DATABASE_HOST') if os.environ.get('DATABASE_HOST') else config.get('DATABASE_HOST')
-    port = os.environ.get('DATABASE_PORT') if os.environ.get('DATABASE_PORT') else config.get('DATABASE_PORT')
-    db_name = os.environ.get('DB_NAME') if os.environ.get('DB_NAME') else config.get('DB_NAME')
-    user = os.environ.get('DATABASE_USER') if os.environ.get('DATABASE_USER') else config.get('DATABASE_USER')
-    password = os.environ.get('DATABASE_PASSWORD') if os.environ.get('DATABASE_PASSWORD') else config.get('DATABASE_PASSWORD')
+    # Use Italy configuration for initialization
+    host = os.environ.get('IT_DB_HOST') if os.environ.get('IT_DB_HOST') else config.get('IT_DB_HOST')
+    port = os.environ.get('IT_DB_PORT') if os.environ.get('IT_DB_PORT') else config.get('IT_DB_PORT')
+    db_name = os.environ.get('IT_DB_NAME') if os.environ.get('IT_DB_NAME') else config.get('IT_DB_NAME')
+    user = os.environ.get('IT_DB_USER') if os.environ.get('IT_DB_USER') else config.get('IT_DB_USER')
+    password = os.environ.get('IT_DB_PASSWORD') if os.environ.get('IT_DB_PASSWORD') else config.get('IT_DB_PASSWORD')
 
     pg = DbInitializePostgres(host=host, port=port, user=user, password=password, db_name=db_name)
     pg.create_tables()

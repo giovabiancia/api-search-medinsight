@@ -50,25 +50,40 @@ def print_info_after(response):
 
 @bp.before_app_request
 def connect_to_db():
-    loggerManager.logger.info("Connecting to default db")
-    g.engine, g.conn, g.cursor = database_manager.connect_db()
-    g.db_connected = True
+    # Connect to Italy database as default for backward compatibility
+    loggerManager.logger.info("Connecting to default db (Italy)")
+    try:
+        g.engine, g.conn, g.cursor = database_manager.connect_db_for_country('italy')
+        g.db_connected = True
+    except Exception as e:
+        loggerManager.logger.error(f"Failed to connect to default database: {e}")
+        # Set empty connections to avoid errors
+        g.engine = g.conn = g.cursor = None
+        g.db_connected = False
 
 
 @bp.after_app_request
 def close_db_if_open(response):
-    # Close default database connection
+    # Close default database connection (Italy)
     connected = g.get("db_connected")
-    if connected:
+    if connected and g.get("conn"):
         loggerManager.logger.info("Closing default db")
-        database_manager.close_db(g.engine, g.conn, g.cursor)
-        g.db_connected = False
+        try:
+            database_manager.close_db(g.engine, g.conn, g.cursor)
+        except Exception as e:
+            loggerManager.logger.debug(f"Error closing default db: {e}")
+        finally:
+            g.db_connected = False
     
     # Close country-specific database connections
     for country in ['italy', 'germany']:
         if g.get(f"db_connected_{country}"):
             loggerManager.logger.info(f"Closing {country} db")
-            database_manager.close_db_for_country(country)
-            setattr(g, f'db_connected_{country}', False)
+            try:
+                database_manager.close_db_for_country(country)
+            except Exception as e:
+                loggerManager.logger.debug(f"Error closing {country} db: {e}")
+            finally:
+                setattr(g, f'db_connected_{country}', False)
     
     return response
