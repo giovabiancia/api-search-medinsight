@@ -37,11 +37,11 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count
-                FROM public.doctors d
-                LEFT JOIN public.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
-                LEFT JOIN public.clinics c ON dcm.clinic_id = c.clinic_id
-                LEFT JOIN public.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
-                LEFT JOIN public.specializations s ON dsm.specialization_id = s.specialization_id
+                FROM doctors.doctors d
+                LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+                LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+                LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
+                LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 WHERE d.doctor_id = {doctor_id}
                 ORDER BY d.doctor_id, c.clinic_id, s.specialization_name
                 """
@@ -61,14 +61,14 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count
-                FROM public.doctors d
-                LEFT JOIN public.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
-                LEFT JOIN public.clinics c ON dcm.clinic_id = c.clinic_id
-                LEFT JOIN public.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
-                LEFT JOIN public.specializations s ON dsm.specialization_id = s.specialization_id
+                FROM doctors.doctors d
+                LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+                LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+                LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
+                LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 WHERE UPPER(c.city_name) = '{city}' AND UPPER(s.specialization_name) = '{profession}'
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
-                LIMIT 50
+                
                 """
 
     elif profession:
@@ -85,14 +85,14 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count
-                FROM public.doctors d
-                LEFT JOIN public.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
-                LEFT JOIN public.clinics c ON dcm.clinic_id = c.clinic_id
-                LEFT JOIN public.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
-                LEFT JOIN public.specializations s ON dsm.specialization_id = s.specialization_id
+                FROM doctors.doctors d
+                LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+                LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+                LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
+                LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 WHERE UPPER(s.specialization_name) = '{profession}'
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
-                LIMIT 50
+                
                 """
 
     elif city:
@@ -109,14 +109,14 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count
-                FROM public.doctors d
-                LEFT JOIN public.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
-                LEFT JOIN public.clinics c ON dcm.clinic_id = c.clinic_id
-                LEFT JOIN public.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
-                LEFT JOIN public.specializations s ON dsm.specialization_id = s.specialization_id
+                FROM doctors.doctors d
+                LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+                LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+                LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
+                LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 WHERE UPPER(c.city_name) = '{city}'
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
-                LIMIT 50
+                
                 """
     else:
         # Demo: Retrieve only few practitioners for demo
@@ -131,13 +131,12 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count
-                FROM public.doctors d
-                LEFT JOIN public.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
-                LEFT JOIN public.clinics c ON dcm.clinic_id = c.clinic_id
-                LEFT JOIN public.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
-                LEFT JOIN public.specializations s ON dsm.specialization_id = s.specialization_id
+                FROM doctors.doctors d
+                LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+                LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+                LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
+                LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
-                LIMIT 20
                 """
     
     loggerManager.logger.info(f"Query for country {country_code}: {query}")
