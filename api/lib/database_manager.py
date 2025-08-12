@@ -22,7 +22,6 @@ from dotenv import dotenv_values
 # Internal dependencies
 from api.lib import error_handlers, util, loggerManager
 
-
 config = dotenv_values(".env")
 
 class DbInitializePostgres(object):
@@ -56,17 +55,12 @@ class DbInitializePostgres(object):
         engine_str = f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.db_name}"
 
         for i in range(5):
-            try:
-                self.conn = psycopg2.connect(host=self.host, port=self.port, dbname=self.db_name, user=self.user,
-                                             password=self.password)
-                if self.conn:
-                    self.db_connected = True
-                    break
-            except Exception as e:
-                loggerManager.logger.warning(f"Connection attempt {i+1} failed: {e}")
-                if i == 4:  # Last attempt
-                    raise e
-                time.sleep(.5)
+            self.conn = psycopg2.connect(host=self.host, port=self.port, dbname=self.db_name, user=self.user,
+                                         password=self.password)
+            if self.conn:
+                self.db_connected = True
+                break
+            time.sleep(.5)
 
         self.engine = create_engine(engine_str)
         self.conn.autocommit = True
@@ -74,18 +68,9 @@ class DbInitializePostgres(object):
         return self
 
     def close_conn(self):
-        try:
-            if self.conn and not self.conn.closed:
-                self.conn.close()
-        except Exception as e:
-            loggerManager.logger.debug(f"Error closing connection: {e}")
-        
-        try:
-            if self.engine:
-                self.engine.dispose()
-        except Exception as e:
-            loggerManager.logger.debug(f"Error disposing engine: {e}")
-        
+        self.conn.close()
+        if self.engine:
+            self.engine.dispose()
         return self
 
     def create_db(self):
@@ -109,17 +94,17 @@ class ExecuteQueries(DbInitializePostgres):
         super(ExecuteQueries, self).__init__()
         self.query_result = None
 
-    def execute_query(self, query, country='default'):
+    def execute_query(self, query, country_code=None):
         """
         :Description: Execute only insert or update query commands
         :param query: str, query to be executed
-        :param country: str, country identifier for database selection
+        :param country_code: str, country code (DE, IT) for multi-database support
         :return: Inserted or updated record
         """
         try:
             if query:
-                # Use country-specific cursor if available, otherwise default
-                cursor = getattr(g, f'cursor_{country}', g.cursor)
+                # Use country-specific cursor if available, otherwise default cursor
+                cursor = getattr(g, f'cursor_{country_code.lower()}', g.cursor) if country_code else g.cursor
                 cursor.execute(query)
                 self.query_result = cursor.fetchall()
                 if len(self.query_result) == 1:
@@ -133,10 +118,8 @@ class ExecuteQueries(DbInitializePostgres):
             err_msg = f'Error in execute_query: {query}: {e}'
             loggerManager.logger.error(err_msg)
             err_msg = f'Server Error'
-            # close connection
-            if g.get("db_connected"):
-                close_db_for_country(country)
-                setattr(g, f'db_connected_{country}', False)
+            # close connections
+            close_all_db_connections()
             if request.is_json:
                 raise error_handlers.InvalidAPIUsage(message=err_msg, status_code=500)
             else:
@@ -144,108 +127,103 @@ class ExecuteQueries(DbInitializePostgres):
         return self
 
 
-def get_database_config(country):
+def get_db_config(country_code):
     """Get database configuration for specific country"""
-    databases = current_app.config.get('DATABASES', {})
-    
-    if country in databases:
-        return databases[country]
-    
-    # Fallback to Italy configuration for default
-    return {
-        'host': os.environ.get('IT_DB_HOST') if os.environ.get('IT_DB_HOST') else config.get('IT_DB_HOST'),
-        'port': os.environ.get('IT_DB_PORT') if os.environ.get('IT_DB_PORT') else config.get('IT_DB_PORT'),
-        'db_name': os.environ.get('IT_DB_NAME') if os.environ.get('IT_DB_NAME') else config.get('IT_DB_NAME'),
-        'user': os.environ.get('IT_DB_USER') if os.environ.get('IT_DB_USER') else config.get('IT_DB_USER'),
-        'password': os.environ.get('IT_DB_PASSWORD') if os.environ.get('IT_DB_PASSWORD') else config.get('IT_DB_PASSWORD')
-    }
+    db_params = current_app.config.get('DATABASE_PARAMS', {})
+    return db_params.get(country_code.upper(), {})
 
 
-def connect_db_for_country(country='default'):
-    """Connect to database for specific country"""
-    db_config = get_database_config(country)
-    
-    pg = DbInitializePostgres(
-        host=db_config['host'],
-        port=db_config['port'],
-        user=db_config['user'],
-        password=db_config['password'],
-        db_name=db_config['db_name']
-    )
+def connect_db(country_code=None):
+    """Returns engine, connector and cursor for specific country"""
+    if country_code:
+        db_config = get_db_config(country_code)
+        if not db_config:
+            raise ValueError(f"Database configuration not found for country: {country_code}")
+        
+        host = db_config.get('host')
+        port = db_config.get('port')
+        db_name = db_config.get('db_name')
+        user = db_config.get('user')
+        password = db_config.get('password')
+    else:
+        # Fallback to legacy configuration
+        host = os.environ.get('DATABASE_HOST') if os.environ.get('DATABASE_HOST') else config.get('DATABASE_HOST')
+        port = os.environ.get('DATABASE_PORT') if os.environ.get('DATABASE_PORT') else config.get('DATABASE_PORT')
+        db_name = os.environ.get('DB_NAME') if os.environ.get('DB_NAME') else config.get('DB_NAME')
+        user = os.environ.get('DATABASE_USER') if os.environ.get('DATABASE_USER') else config.get('DATABASE_USER')
+        password = os.environ.get('DATABASE_PASSWORD') if os.environ.get('DATABASE_PASSWORD') else config.get('DATABASE_PASSWORD')
+
+    pg = DbInitializePostgres(host=host, port=port, user=user, password=password, db_name=db_name)
     pg.connect_db()
-    
-    # Store connections with country-specific names
-    setattr(g, f'engine_{country}', pg.engine)
-    setattr(g, f'conn_{country}', pg.conn)
-    setattr(g, f'cursor_{country}', pg.cursor)
-    setattr(g, f'db_connected_{country}', True)
-    
     return pg.engine, pg.conn, pg.cursor
 
 
-def connect_db():
-    """Returns engine, connector and cursor for default database (backward compatibility)"""
-    return connect_db_for_country('default')
-
-
-def close_db_for_country(country='default'):
-    """Close database connection for specific country"""
-    engine = getattr(g, f'engine_{country}', None)
-    conn = getattr(g, f'conn_{country}', None)
-    cursor = getattr(g, f'cursor_{country}', None)
-    
+def connect_all_country_dbs():
+    """Connect to all configured country databases"""
+    connections = {}
     try:
-        if cursor and not cursor.closed:
-            cursor.close()
+        db_params = current_app.config.get('DATABASE_PARAMS', {})
+        for country_code in db_params.keys():
+            try:
+                engine, conn, cursor = connect_db(country_code)
+                connections[country_code.lower()] = {
+                    'engine': engine,
+                    'conn': conn,
+                    'cursor': cursor
+                }
+                loggerManager.logger.info(f"Connected to database for country: {country_code}")
+            except Exception as e:
+                loggerManager.logger.error(f"Failed to connect to database for country {country_code}: {e}")
+                
     except Exception as e:
-        loggerManager.logger.debug(f"Error closing cursor for {country}: {e}")
+        loggerManager.logger.error(f"Error connecting to country databases: {e}")
     
-    try:
-        if conn and not conn.closed:
-            conn.commit()
-            conn.close()
-    except Exception as e:
-        loggerManager.logger.debug(f"Error closing connection for {country}: {e}")
-    
-    try:
-        if engine:
-            engine.dispose()
-    except Exception as e:
-        loggerManager.logger.debug(f"Error disposing engine for {country}: {e}")
+    return connections
 
 
 def close_db(engine, connector, cursor):
-    """Close database and dispose engine (backward compatibility)"""
+    """Close database and dispose engine"""
     try:
-        if cursor and not cursor.closed:
-            cursor.close()
-    except Exception as e:
-        loggerManager.logger.debug(f"Error closing cursor: {e}")
-    
-    try:
-        if connector and not connector.closed:
-            connector.commit()
-            connector.close()
-    except Exception as e:
-        loggerManager.logger.debug(f"Error closing connector: {e}")
-    
-    try:
+        cursor.close()
+        connector.commit()
+        connector.close()
         if engine:
             engine.dispose()
     except Exception as e:
-        loggerManager.logger.debug(f"Error disposing engine: {e}")
-    
-    return
+        loggerManager.logger.error(f"Error closing database connection: {e}")
+
+
+def close_all_db_connections():
+    """Close all database connections"""
+    try:
+        # Close country-specific connections
+        for country in ['de', 'it']:
+            if hasattr(g, f'engine_{country}'):
+                close_db(
+                    getattr(g, f'engine_{country}'),
+                    getattr(g, f'conn_{country}'),
+                    getattr(g, f'cursor_{country}')
+                )
+                delattr(g, f'engine_{country}')
+                delattr(g, f'conn_{country}')
+                delattr(g, f'cursor_{country}')
+        
+        # Close default connection if exists
+        if hasattr(g, 'engine'):
+            close_db(g.engine, g.conn, g.cursor)
+            
+        g.db_connected = False
+    except Exception as e:
+        loggerManager.logger.error(f"Error closing all database connections: {e}")
 
 
 def init_db():
-    # Instantiate DbInitializePostgres
-    # Use Italy configuration for initialization
-    host = os.environ.get('IT_DB_HOST') if os.environ.get('IT_DB_HOST') else config.get('IT_DB_HOST')
-    port = os.environ.get('IT_DB_PORT') if os.environ.get('IT_DB_PORT') else config.get('IT_DB_PORT')
-    db_name = os.environ.get('IT_DB_NAME') if os.environ.get('IT_DB_NAME') else config.get('IT_DB_NAME')
-    user = os.environ.get('IT_DB_USER') if os.environ.get('IT_DB_USER') else config.get('IT_DB_USER')
-    password = os.environ.get('IT_DB_PASSWORD') if os.environ.get('IT_DB_PASSWORD') else config.get('IT_DB_PASSWORD')
+    # Legacy function for backward compatibility
+    host = os.environ.get('DATABASE_HOST') if os.environ.get('DATABASE_HOST') else config.get('DATABASE_HOST')
+    port = os.environ.get('DATABASE_PORT') if os.environ.get('DATABASE_PORT') else config.get('DATABASE_PORT')
+    db_name = os.environ.get('DB_NAME') if os.environ.get('DB_NAME') else config.get('DB_NAME')
+    user = os.environ.get('DATABASE_USER') if os.environ.get('DATABASE_USER') else config.get('DATABASE_USER')
+    password = os.environ.get('DATABASE_PASSWORD') if os.environ.get('DATABASE_PASSWORD') else config.get('DATABASE_PASSWORD')
 
     pg = DbInitializePostgres(host=host, port=port, user=user, password=password, db_name=db_name)
     pg.create_tables()
@@ -259,11 +237,7 @@ if __name__ == '__main__':
 @click.command('init-db')
 @with_appcontext
 def init_db_command():
-    """
-    parameters: str, country_code iso_alpha_3 describing a country
-    server: str, database server to which we want to create a database
-    :return:
-    """
+    """Initialize database"""
     click.echo('Initializing the database started.')
     init_db()
     click.echo('Initialized the database.')

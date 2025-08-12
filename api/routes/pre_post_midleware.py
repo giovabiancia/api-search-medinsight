@@ -14,7 +14,6 @@ from flask import Flask, request, Blueprint, session, g, flash, render_template,
 from api.lib import database_manager, error_handlers, loggerManager
 from datetime import datetime
 
-
 bp = Blueprint("pre_post", __name__)
 
 
@@ -50,40 +49,39 @@ def print_info_after(response):
 
 @bp.before_app_request
 def connect_to_db():
-    # Connect to Italy database as default for backward compatibility
-    loggerManager.logger.info("Connecting to default db (Italy)")
-    try:
-        g.engine, g.conn, g.cursor = database_manager.connect_db_for_country('italy')
-        g.db_connected = True
-    except Exception as e:
-        loggerManager.logger.error(f"Failed to connect to default database: {e}")
-        # Set empty connections to avoid errors
-        g.engine = g.conn = g.cursor = None
-        g.db_connected = False
+    """Connect to all country databases"""
+    loggerManager.logger.info("Connecting to databases")
+    
+    # Connect to all country databases
+    connections = database_manager.connect_all_country_dbs()
+    
+    # Store connections in Flask's g object
+    for country, conn_data in connections.items():
+        setattr(g, f'engine_{country}', conn_data['engine'])
+        setattr(g, f'conn_{country}', conn_data['conn'])
+        setattr(g, f'cursor_{country}', conn_data['cursor'])
+    
+    # Set default connection (first available or fallback to legacy)
+    if connections:
+        first_country = list(connections.keys())[0]
+        g.engine = getattr(g, f'engine_{first_country}')
+        g.conn = getattr(g, f'conn_{first_country}')
+        g.cursor = getattr(g, f'cursor_{first_country}')
+    else:
+        # Fallback to legacy connection
+        try:
+            g.engine, g.conn, g.cursor = database_manager.connect_db()
+        except Exception as e:
+            loggerManager.logger.error(f"Failed to establish any database connection: {e}")
+    
+    g.db_connected = True
 
 
 @bp.after_app_request
 def close_db_if_open(response):
-    # Close default database connection (Italy)
+    """Close all database connections"""
     connected = g.get("db_connected")
-    if connected and g.get("conn"):
-        loggerManager.logger.info("Closing default db")
-        try:
-            database_manager.close_db(g.engine, g.conn, g.cursor)
-        except Exception as e:
-            loggerManager.logger.debug(f"Error closing default db: {e}")
-        finally:
-            g.db_connected = False
-    
-    # Close country-specific database connections
-    for country in ['italy', 'germany']:
-        if g.get(f"db_connected_{country}"):
-            loggerManager.logger.info(f"Closing {country} db")
-            try:
-                database_manager.close_db_for_country(country)
-            except Exception as e:
-                loggerManager.logger.debug(f"Error closing {country} db: {e}")
-            finally:
-                setattr(g, f'db_connected_{country}', False)
-    
+    if connected:
+        loggerManager.logger.info("Closing databases")
+        database_manager.close_all_db_connections()
     return response

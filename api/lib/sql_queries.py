@@ -4,79 +4,85 @@
 @email:         barnabasaugustino@gmail.com
 @website:       http://www.barnabasmatonya.com
 @client:        Barnabas
-@gitlab:        https://gitlab.com/projects28/medinsights-be.git
+@gitlab:
 @domain name:
 @Hostname:      DigitalOcean
-@Description:   Query SQL semplificate
+@Description:
+
 """
 
 from api.lib import loggerManager
 
-def get_doctors_query(doctor_id=None, city=None, profession=None):
+
+def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='IT'):
     """
-    Genera query SQL per ottenere informazioni dottori
-    
+    Get doctors query for specific country database
     :param doctor_id: int doctor id
     :param city: string city name
     :param profession: string, profession
+    :param country_code: string, country code (DE, IT)
     :return: SQL query string
     """
     
-    base_query = """
-        SELECT 
-            doctor_id, salutation, given_name, surname, full_name, gender, 
-            rate, branding, has_slots, allow_questions, url
-        FROM doctors.doctors 
-    """
-    
     if doctor_id:
-        # Dottore specifico
-        query = f"{base_query} WHERE doctor_id = {doctor_id}"
-        loggerManager.logger.info(f"Query per doctor ID: {doctor_id}")
+        # Retrieve doctor's information by ID
+        query = f"""
+                SELECT 
+                    doctor_id, salutation, given_name, surname, full_name, gender, 
+                    rate, branding, has_slots, allow_questions, url
+                FROM doctors.doctors 
+                WHERE doctor_id = {doctor_id}
+                """
 
     elif city and profession:
-        # Città e professione
+        # Retrieve practitioners from the city with specific profession
         profession = profession.upper()
         city = city.upper()
         query = f"""
-            {base_query}
-            WHERE UPPER(city) = '{city}' 
-            AND UPPER(profession) LIKE '%{profession}%'
-            ORDER BY surname, given_name
-            LIMIT 50
-        """
-        loggerManager.logger.info(f"Query per professione '{profession}' in città '{city}'")
+                SELECT 
+                    doctor_id, salutation, given_name, surname, full_name, gender, 
+                    rate, branding, has_slots, allow_questions, url
+                FROM doctors.doctors 
+                WHERE UPPER(city) = '{city}' AND UPPER(profession) = '{profession}'
+                ORDER BY rate DESC
+                LIMIT 50
+                """
 
     elif profession:
-        # Solo professione
+        # Retrieve all practitioners matching the profession
         profession = profession.upper()
         query = f"""
-            {base_query}
-            WHERE UPPER(profession) LIKE '%{profession}%'
-            ORDER BY city, surname, given_name
-            LIMIT 50
-        """
-        loggerManager.logger.info(f"Query per professione: '{profession}'")
+                SELECT 
+                    doctor_id, salutation, given_name, surname, full_name, gender, 
+                    rate, branding, has_slots, allow_questions, url
+                FROM doctors.doctors 
+                WHERE UPPER(profession) = '{profession}'
+                ORDER BY rate DESC
+                LIMIT 50
+                """
 
     elif city:
-        # Solo città
+        # Retrieve all practitioners from the specified city
         city = city.upper()
         query = f"""
-            {base_query}
-            WHERE UPPER(city) = '{city}'
-            ORDER BY profession, surname, given_name
-            LIMIT 50
-        """
-        loggerManager.logger.info(f"Query per città: '{city}'")
-    
+                SELECT 
+                    doctor_id, salutation, given_name, surname, full_name, gender, 
+                    rate, branding, has_slots, allow_questions, url
+                FROM doctors.doctors 
+                WHERE UPPER(city) = '{city}'
+                ORDER BY rate DESC
+                LIMIT 50
+                """
     else:
-        # Demo - alcuni dottori
+        # Default: Retrieve sample practitioners for demo
         query = f"""
-            {base_query}
-            ORDER BY doctor_id
-            LIMIT 10
-        """
-        loggerManager.logger.info("Query demo: sample doctors")
+                SELECT 
+                    doctor_id, salutation, given_name, surname, full_name, gender, 
+                    rate, branding, has_slots, allow_questions, url
+                FROM doctors.doctors 
+                ORDER BY rate DESC
+                LIMIT 20
+                """
     
-    loggerManager.logger.debug(f"Query generata: {query}")
+    loggerManager.logger.info(f"Query for country {country_code}: {query}")
     return query
