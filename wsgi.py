@@ -5,6 +5,8 @@
 """
 from werkzeug.middleware.proxy_fix import ProxyFix
 from api import create_app
+import os
+
 app = create_app()
 
 app.wsgi_app = ProxyFix(
@@ -12,4 +14,10 @@ app.wsgi_app = ProxyFix(
 )
 
 if __name__ == '__main__':
-    app.run()
+    # Forza porta 5005 in development
+    port = int(os.environ.get('PORT', 5005))
+    host = os.environ.get('HOST', '127.0.0.1')
+    debug = os.environ.get('ENV', 'LOCAL') != 'PRODUCTION'
+    
+    print(f"🚀 Avvio server su {host}:{port}")
+    app.run(host=host, port=port, debug=debug)
