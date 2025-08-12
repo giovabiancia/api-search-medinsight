@@ -7,125 +7,103 @@
 @gitlab:        https://gitlab.com/projects28/medinsights-be.git
 @domain name:
 @Hostname:      DigitalOcean
-@Description:   Route semplificate con supporto multi-paese
+@Description:
 """
 
-from flask import Flask, request, Blueprint, session, g, flash, render_template, jsonify, current_app, abort
-from api.lib import error_handlers, util, worker
+from flask import Flask, request, Blueprint, session, g, flash, render_template, jsonify, current_app, abort, redirect, \
+    url_for, make_response
+from api.lib import error_handlers, util, worker, database_manager
 
 bp = Blueprint("api", __name__)
+
 
 @bp.errorhandler(error_handlers.InvalidAPIUsage)
 def invalid_api_usage(ex):
     return jsonify(ex.to_dict()), ex.status_code
 
+
 @bp.route('/', methods=('GET',))
 def index():
-    """Informazioni API"""
+    """
+    :return: Return information about API
+    """
     output = {
-        "message": "MedInsight Backend API",
-        "version": "2.0.0",
-        "current_country": getattr(g, 'country', 'IT'),
-        "supported_countries": ["DE", "IT"],
-        "endpoints": {
-            "/doctors": "Get doctors (country from parameter)",
-            "/de/doctors": "Get doctors from Germany",
-            "/it/doctors": "Get doctors from Italy"
-        }
+        "message": "welcome to medinsight backend",
     }
     return jsonify(output)
 
+
 @bp.route('/doctors', methods=('GET', 'POST'))
 def doctors():
-    """Ottieni dottori dal database del paese corrente"""
-    country = getattr(g, 'country', 'IT')
-    return get_doctors_data(country)
+    """
+    Get doctors from default database (backward compatibility)
+    :return:
+    """
+    request_data = util.process_request(request)
+    request_data = dict(request_data)
 
-@bp.route('/de/doctors', methods=('GET', 'POST'))
-def doctors_de():
-    """Ottieni dottori dalla Germania"""
-    return get_doctors_data('DE')
+    med_worker = worker.Doctors(request_data)
+    med_worker.get_doctors()
+    if not med_worker.doctors_returned:
+        error_message = "Could not find doctors"
 
-@bp.route('/it/doctors', methods=('GET', 'POST'))
-def doctors_it():
-    """Ottieni dottori dall'Italia"""
-    return get_doctors_data('IT')
+    output = {
+        "doctors": "doctors"
+    }
+    return jsonify(output)
 
-def get_doctors_data(country):
-    """Funzione per ottenere dati dottori"""
+
+@bp.route('/<country>/doctors', methods=('GET', 'POST'))
+def doctors_by_country(country):
+    """
+    Get doctors from country-specific database
+    :param country: country identifier (italy, germany)
+    :return:
+    """
+    # Validate country parameter
+    allowed_countries = ['italy', 'germany']
+    if country not in allowed_countries:
+        raise error_handlers.InvalidAPIUsage(
+            message=f"Country '{country}' not supported. Allowed countries: {', '.join(allowed_countries)}", 
+            status_code=400
+        )
+    
+    # Connect to country-specific database
     try:
-        # Connetti al database del paese se necessario
-        if getattr(g, 'country', None) != country:
-            # Riconnetti al database giusto
-            if g.get("db_connected"):
-                from api.lib import database_manager
-                database_manager.close_db(g.engine, g.conn, g.cursor)
-            
-            g.engine, g.conn, g.cursor = database_manager.connect_db(country)
-            g.country = country
-            g.db_connected = True
-        
-        # Ottieni parametri richiesta
-        request_data = util.process_request(request)
-        request_data = dict(request_data)
-        
-        # Crea worker
-        med_worker = worker.Doctors(request_data)
-        med_worker.get_doctors()
-        
-        if not med_worker.returned_doctors:
-            output = {
-                "message": f"Nessun dottore trovato in {country}",
-                "country": country,
-                "doctors": [],
-                "total": 0
-            }
-            return jsonify(output), 404
-        
-        # Prepara risposta
-        doctors_list = med_worker.doctors_returned
-        if isinstance(doctors_list, dict):
-            doctors_list = [doctors_list]
-        
-        output = {
-            "success": True,
-            "country": country,
-            "doctors": doctors_list or [],
-            "total": len(doctors_list) if doctors_list else 0,
-            "filters": {
-                "id": request_data.get('id'),
-                "city": request_data.get('city'),
-                "profession": request_data.get('profession')
-            }
-        }
-        return jsonify(output)
-        
+        database_manager.connect_db_for_country(country)
     except Exception as e:
-        loggerManager.logger.error(f"Errore ottenimento dottori {country}: {e}")
-        output = {
-            "error": "Errore server",
-            "country": country,
-            "message": "Impossibile ottenere informazioni dottori"
-        }
-        return jsonify(output), 500
+        raise error_handlers.InvalidAPIUsage(
+            message=f"Could not connect to {country} database", 
+            status_code=500
+        )
 
-@bp.route('/health', methods=('GET',))
-def health():
-    """Health check"""
-    try:
-        # Test connessione database corrente
-        g.cursor.execute("SELECT 1")
-        result = g.cursor.fetchone()
-        
-        output = {
-            "status": "ok",
-            "country": getattr(g, 'country', 'IT'),
-            "database": "connected" if result else "error"
-        }
-        return jsonify(output)
-    except Exception as e:
-        output = {
-            "status": "error",
-            "message": str(e)
-        }
-        return jsonify(output), 500
+    request_data = util.process_request(request)
+    request_data = dict(request_data)
+
+    med_worker = worker.Doctors(request_data, country=country)
+    med_worker.get_doctors()
+    if not med_worker.doctors_returned:
+        error_message = "Could not find doctors"
+
+    output = {
+        "doctors": "doctors"
+    }
+    return jsonify(output)
+
+
+@bp.route('/italy/doctors', methods=('GET', 'POST'))
+def doctors_italy():
+    """
+    Get doctors from Italy database
+    :return:
+    """
+    return doctors_by_country('italy')
+
+
+@bp.route('/germany/doctors', methods=('GET', 'POST'))
+def doctors_germany():
+    """
+    Get doctors from Germany database
+    :return:
+    """
+    return doctors_by_country('germany')

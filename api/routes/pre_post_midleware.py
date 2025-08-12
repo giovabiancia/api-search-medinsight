@@ -7,81 +7,68 @@
 @gitlab:        https://gitlab.com/projects28/medinsights-be.git
 @domain name:
 @Hostname:      DigitalOcean
-@Description:   Middleware semplificato
+@Description:
 """
 
 from flask import Flask, request, Blueprint, session, g, flash, render_template, jsonify, current_app
 from api.lib import database_manager, error_handlers, loggerManager
 from datetime import datetime
 
+
 bp = Blueprint("pre_post", __name__)
+
 
 @bp.errorhandler(error_handlers.InvalidAPIUsage)
 def invalid_api_usage(ex):
     return jsonify(ex.to_dict()), ex.status_code
 
+
 @bp.before_app_request
 def print_info_before():
     loggerManager.logger.info("---------------- Request start---------------------")
+    loggerManager.logger.info(f'Start time {datetime.now()}')
     loggerManager.logger.info(f'url_rule: {request.url_rule} ')
+    loggerManager.logger.debug(f'headers: {request.headers}')
     loggerManager.logger.info(f'args: {request.args} ')
+    loggerManager.logger.debug(f'content_length {request.content_length} ')
+    loggerManager.logger.info(f'query_string: {request.query_string}')
     loggerManager.logger.info(f'remote_addr: {request.remote_addr}')
+    loggerManager.logger.debug(f'scheme: {request.scheme}')
+    loggerManager.logger.debug(f"-------------------------------------")
+    loggerManager.logger.debug(f"Browser: {request.environ.get('HTTP_SEC_CH_UA')} ")
+    loggerManager.logger.debug(f"Mobile: {request.environ.get('HTTP_SEC_CH_UA_MOBILE')}")
+    loggerManager.logger.debug(f"Platform: {request.environ.get('HTTP_SEC_CH_UA_PLATFORM')}")
+    loggerManager.logger.debug(f"Language: {request.environ.get('HTTP_ACCEPT_LANGUAGE')}")
+    loggerManager.logger.info(f"-------------------------------------")
+
 
 @bp.after_app_request
 def print_info_after(response):
     loggerManager.logger.info("---------------- Request end---------------------")
     return response
 
-def get_country_from_request():
-    """Estrae il paese dalla richiesta"""
-    # Controlla parametri URL
-    country = request.args.get('country')
-    if country:
-        return country.upper()
-    
-    # Controlla JSON
-    if request.is_json and request.json:
-        country = request.json.get('country')
-        if country:
-            return country.upper()
-    
-    # Controlla form
-    if request.form:
-        country = request.form.get('country')
-        if country:
-            return country.upper()
-    
-    # Default Italia
-    return 'IT'
 
 @bp.before_app_request
 def connect_to_db():
-    """Connette al database giusto in base al paese"""
-    try:
-        # Ottieni paese dalla richiesta
-        country = get_country_from_request()
-        
-        # Valida paese (solo DE o IT)
-        if country not in ['DE', 'IT']:
-            country = 'IT'  # Default
-        
-        g.country = country
-        
-        # Connetti al database del paese
-        g.engine, g.conn, g.cursor = database_manager.connect_db(country)
-        g.db_connected = True
-        
-        loggerManager.logger.info(f"Connesso al database: {country}")
-        
-    except Exception as e:
-        loggerManager.logger.error(f"Errore connessione database: {e}")
-        g.db_connected = False
+    loggerManager.logger.info("Connecting to default db")
+    g.engine, g.conn, g.cursor = database_manager.connect_db()
+    g.db_connected = True
+
 
 @bp.after_app_request
 def close_db_if_open(response):
-    """Chiude connessione database"""
-    if g.get("db_connected"):
+    # Close default database connection
+    connected = g.get("db_connected")
+    if connected:
+        loggerManager.logger.info("Closing default db")
         database_manager.close_db(g.engine, g.conn, g.cursor)
         g.db_connected = False
-        loggerManager.logger.info("Database disconnesso")
+    
+    # Close country-specific database connections
+    for country in ['italy', 'germany']:
+        if g.get(f"db_connected_{country}"):
+            loggerManager.logger.info(f"Closing {country} db")
+            database_manager.close_db_for_country(country)
+            setattr(g, f'db_connected_{country}', False)
+    
     return response

@@ -1,17 +1,23 @@
 {
   "info": {
-    "_postman_id": "12345678-1234-1234-1234-123456789012",
-    "name": "MedInsights Backend API",
-    "description": "Collection per testare l'API MedInsights con supporto multi-database (Germania e Italia)",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_exporter_id": "12345678"
+    "_postman_id": "medinsights-api-collection",
+    "name": "MedInsights API - Multi Database",
+    "description": "API per gestire dati medici per Italia e Germania",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5005",
+      "type": "string"
+    }
+  ],
   "item": [
     {
-      "name": "🏠 Info & Health",
+      "name": "Health Check",
       "item": [
         {
-          "name": "API Info",
+          "name": "API Status",
           "request": {
             "method": "GET",
             "header": [],
@@ -22,51 +28,48 @@
             }
           },
           "response": []
-        },
-        {
-          "name": "Health Check",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/health",
-              "host": ["{{base_url}}"],
-              "path": ["health"]
-            }
-          },
-          "response": []
         }
       ]
     },
     {
-      "name": "🇮🇹 Doctors Italy",
+      "name": "Doctors - Italy",
       "item": [
         {
           "name": "Get All Doctors (Italy)",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{base_url}}/it/doctors",
+              "raw": "{{base_url}}/italy/doctors",
               "host": ["{{base_url}}"],
-              "path": ["it", "doctors"]
+              "path": ["italy", "doctors"]
             }
           },
           "response": []
         },
         {
-          "name": "Get Doctors by City (Roma)",
+          "name": "Get Doctors by City (Italy)",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{base_url}}/it/doctors?city=ROMA",
+              "raw": "{{base_url}}/italy/doctors?city=Milano",
               "host": ["{{base_url}}"],
-              "path": ["it", "doctors"],
+              "path": ["italy", "doctors"],
               "query": [
                 {
                   "key": "city",
-                  "value": "ROMA"
+                  "value": "Milano"
                 }
               ]
             }
@@ -74,18 +77,23 @@
           "response": []
         },
         {
-          "name": "Get Doctors by Profession (Cardiologo)",
+          "name": "Get Doctors by Profession (Italy)",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{base_url}}/it/doctors?profession=CARDIOLOGO",
+              "raw": "{{base_url}}/italy/doctors?profession=Cardiologo",
               "host": ["{{base_url}}"],
-              "path": ["it", "doctors"],
+              "path": ["italy", "doctors"],
               "query": [
                 {
                   "key": "profession",
-                  "value": "CARDIOLOGO"
+                  "value": "Cardiologo"
                 }
               ]
             }
@@ -93,22 +101,27 @@
           "response": []
         },
         {
-          "name": "Get Doctors by City + Profession (Milano + Dentista)",
+          "name": "Get Doctors by City and Profession (Italy)",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{base_url}}/it/doctors?city=MILANO&profession=DENTISTA",
+              "raw": "{{base_url}}/italy/doctors?city=Roma&profession=Cardiologo",
               "host": ["{{base_url}}"],
-              "path": ["it", "doctors"],
+              "path": ["italy", "doctors"],
               "query": [
                 {
                   "key": "city",
-                  "value": "MILANO"
+                  "value": "Roma"
                 },
                 {
                   "key": "profession",
-                  "value": "DENTISTA"
+                  "value": "Cardiologo"
                 }
               ]
             }
@@ -116,18 +129,23 @@
           "response": []
         },
         {
-          "name": "Get Doctor by ID",
+          "name": "Get Doctor by ID (Italy)",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{base_url}}/it/doctors?id=1",
+              "raw": "{{base_url}}/italy/doctors?id=123",
               "host": ["{{base_url}}"],
-              "path": ["it", "doctors"],
+              "path": ["italy", "doctors"],
               "query": [
                 {
                   "key": "id",
-                  "value": "1"
+                  "value": "123"
                 }
               ]
             }
@@ -135,7 +153,7 @@
           "response": []
         },
         {
-          "name": "Search Doctors (POST with JSON)",
+          "name": "POST Doctors (Italy)",
           "request": {
             "method": "POST",
             "header": [
@@ -146,12 +164,12 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"city\": \"ROMA\",\n    \"profession\": \"CARDIOLOGO\"\n}"
+              "raw": "{\n    \"city\": \"Napoli\",\n    \"profession\": \"Dermatologo\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/it/doctors",
+              "raw": "{{base_url}}/italy/doctors",
               "host": ["{{base_url}}"],
-              "path": ["it", "doctors"]
+              "path": ["italy", "doctors"]
             }
           },
           "response": []
@@ -159,265 +177,44 @@
       ]
     },
     {
-      "name": "🇩🇪 Doctors Germany",
+      "name": "Doctors - Germany",
       "item": [
         {
           "name": "Get All Doctors (Germany)",
           "request": {
             "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/de/doctors",
-              "host": ["{{base_url}}"],
-              "path": ["de", "doctors"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Get Doctors by City (Berlin)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/de/doctors?city=BERLIN",
-              "host": ["{{base_url}}"],
-              "path": ["de", "doctors"],
-              "query": [
-                {
-                  "key": "city",
-                  "value": "BERLIN"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Get Doctors by Profession (Kardiologe)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/de/doctors?profession=KARDIOLOGE",
-              "host": ["{{base_url}}"],
-              "path": ["de", "doctors"],
-              "query": [
-                {
-                  "key": "profession",
-                  "value": "KARDIOLOGE"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Get Doctors by City + Profession (Munich + Zahnarzt)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/de/doctors?city=MUNICH&profession=ZAHNARZT",
-              "host": ["{{base_url}}"],
-              "path": ["de", "doctors"],
-              "query": [
-                {
-                  "key": "city",
-                  "value": "MUNICH"
-                },
-                {
-                  "key": "profession",
-                  "value": "ZAHNARZT"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Search Doctors (POST with JSON)",
-          "request": {
-            "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"city\": \"BERLIN\",\n    \"profession\": \"KARDIOLOGE\"\n}"
-            },
             "url": {
-              "raw": "{{base_url}}/de/doctors",
+              "raw": "{{base_url}}/germany/doctors",
               "host": ["{{base_url}}"],
-              "path": ["de", "doctors"]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "🌍 Dynamic Country Selection",
-      "item": [
-        {
-          "name": "Get Doctors with Country Parameter (IT)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/doctors?country=IT&city=ROMA",
-              "host": ["{{base_url}}"],
-              "path": ["doctors"],
-              "query": [
-                {
-                  "key": "country",
-                  "value": "IT"
-                },
-                {
-                  "key": "city",
-                  "value": "ROMA"
-                }
-              ]
+              "path": ["germany", "doctors"]
             }
           },
           "response": []
         },
         {
-          "name": "Get Doctors with Country Parameter (DE)",
+          "name": "Get Doctors by City (Germany)",
           "request": {
             "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/doctors?country=DE&city=BERLIN",
-              "host": ["{{base_url}}"],
-              "path": ["doctors"],
-              "query": [
-                {
-                  "key": "country",
-                  "value": "DE"
-                },
-                {
-                  "key": "city",
-                  "value": "BERLIN"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Get Doctors with Country Header (IT)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "X-Country-Code",
-                "value": "IT"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/doctors?profession=CARDIOLOGO",
-              "host": ["{{base_url}}"],
-              "path": ["doctors"],
-              "query": [
-                {
-                  "key": "profession",
-                  "value": "CARDIOLOGO"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Get Doctors with Country Header (DE)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "X-Country-Code",
-                "value": "DE"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/doctors?profession=KARDIOLOGE",
-              "host": ["{{base_url}}"],
-              "path": ["doctors"],
-              "query": [
-                {
-                  "key": "profession",
-                  "value": "KARDIOLOGE"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Search with Country in JSON (IT)",
-          "request": {
-            "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"country\": \"IT\",\n    \"city\": \"NAPOLI\",\n    \"profession\": \"CHIRURGO\"\n}"
-            },
             "url": {
-              "raw": "{{base_url}}/doctors",
+              "raw": "{{base_url}}/germany/doctors?city=Berlin",
               "host": ["{{base_url}}"],
-              "path": ["doctors"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Search with Country in JSON (DE)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"country\": \"DE\",\n    \"city\": \"HAMBURG\",\n    \"profession\": \"CHIRURG\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/doctors",
-              "host": ["{{base_url}}"],
-              "path": ["doctors"]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "🧪 Edge Cases & Testing",
-      "item": [
-        {
-          "name": "Invalid Country Code",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/doctors?country=FR",
-              "host": ["{{base_url}}"],
-              "path": ["doctors"],
+              "path": ["germany", "doctors"],
               "query": [
                 {
-                  "key": "country",
-                  "value": "FR"
+                  "key": "city",
+                  "value": "Berlin"
                 }
               ]
             }
@@ -425,18 +222,75 @@
           "response": []
         },
         {
-          "name": "Non-existent Doctor ID",
+          "name": "Get Doctors by Profession (Germany)",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{base_url}}/doctors?id=99999",
+              "raw": "{{base_url}}/germany/doctors?profession=Kardiologe",
               "host": ["{{base_url}}"],
-              "path": ["doctors"],
+              "path": ["germany", "doctors"],
+              "query": [
+                {
+                  "key": "profession",
+                  "value": "Kardiologe"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Doctors by City and Profession (Germany)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/germany/doctors?city=Munich&profession=Kardiologe",
+              "host": ["{{base_url}}"],
+              "path": ["germany", "doctors"],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "Munich"
+                },
+                {
+                  "key": "profession",
+                  "value": "Kardiologe"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Doctor by ID (Germany)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/germany/doctors?id=456",
+              "host": ["{{base_url}}"],
+              "path": ["germany", "doctors"],
               "query": [
                 {
                   "key": "id",
-                  "value": "99999"
+                  "value": "456"
                 }
               ]
             }
@@ -444,60 +298,72 @@
           "response": []
         },
         {
-          "name": "Non-existent City",
+          "name": "POST Doctors (Germany)",
           "request": {
-            "method": "GET",
-            "header": [],
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"city\": \"Hamburg\",\n    \"profession\": \"Dermatologe\"\n}"
+            },
             "url": {
-              "raw": "{{base_url}}/it/doctors?city=ATLANTIS",
+              "raw": "{{base_url}}/germany/doctors",
               "host": ["{{base_url}}"],
-              "path": ["it", "doctors"],
-              "query": [
-                {
-                  "key": "city",
-                  "value": "ATLANTIS"
-                }
-              ]
+              "path": ["germany", "doctors"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Doctors - Default (Legacy)",
+      "item": [
+        {
+          "name": "Get All Doctors (Default)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/doctors",
+              "host": ["{{base_url}}"],
+              "path": ["doctors"]
             }
           },
           "response": []
         },
         {
-          "name": "Empty Parameters",
+          "name": "Get Doctors with Parameters (Default)",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{base_url}}/doctors?city=&profession=",
+              "raw": "{{base_url}}/doctors?city=Test&profession=Doctor",
               "host": ["{{base_url}}"],
               "path": ["doctors"],
               "query": [
                 {
                   "key": "city",
-                  "value": ""
+                  "value": "Test"
                 },
                 {
                   "key": "profession",
-                  "value": ""
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Special Characters in Search",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/de/doctors?profession=ärzt",
-              "host": ["{{base_url}}"],
-              "path": ["de", "doctors"],
-              "query": [
-                {
-                  "key": "profession",
-                  "value": "ärzt"
+                  "value": "Doctor"
                 }
               ]
             }
@@ -505,53 +371,29 @@
           "response": []
         }
       ]
-    }
-  ],
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "// Auto-set timestamp for requests",
-          "pm.globals.set('timestamp', Date.now());"
-        ]
-      }
     },
     {
-      "listen": "test",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "// Basic response validation",
-          "pm.test('Response status is 200 or 404', function () {",
-          "    pm.expect(pm.response.code).to.be.oneOf([200, 404, 400, 500]);",
-          "});",
-          "",
-          "pm.test('Response has JSON format', function () {",
-          "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
-          "});",
-          "",
-          "pm.test('Response time is less than 2000ms', function () {",
-          "    pm.expect(pm.response.responseTime).to.be.below(2000);",
-          "});",
-          "",
-          "// Log response for debugging",
-          "console.log('Response:', pm.response.json());"
-        ]
-      }
-    }
-  ],
-  "variable": [
-    {
-      "key": "base_url",
-      "value": "http://localhost:5005",
-      "type": "string"
-    },
-    {
-      "key": "api_version",
-      "value": "2.0.0",
-      "type": "string"
+      "name": "Error Tests",
+      "item": [
+        {
+          "name": "Invalid Country",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/france/doctors",
+              "host": ["{{base_url}}"],
+              "path": ["france", "doctors"]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

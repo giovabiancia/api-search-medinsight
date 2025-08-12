@@ -26,7 +26,7 @@ class Configuration(object):
     # Database Germania
     DE_DATABASE = {
         'host': os.environ.get('DE_DB_HOST') or config.get('DE_DB_HOST', 'localhost'),
-        'port': os.environ.get('DE_DB_PORT') or config.get('DE_DB_PORT', '5432'),
+        'port': os.environ.get('DE_DB_PORT') or config.get('DE_DB_PORT', '5433'),
         'user': os.environ.get('DE_DB_USER') or config.get('DE_DB_USER', 'user'),
         'password': os.environ.get('DE_DB_PASSWORD') or config.get('DE_DB_PASSWORD', 'password'),
         'name': os.environ.get('DE_DB_NAME') or config.get('DE_DB_NAME', 'medinsights_de')
@@ -35,7 +35,7 @@ class Configuration(object):
     # Database Italia
     IT_DATABASE = {
         'host': os.environ.get('IT_DB_HOST') or config.get('IT_DB_HOST', 'localhost'),
-        'port': os.environ.get('IT_DB_PORT') or config.get('IT_DB_PORT', '5432'),
+        'port': os.environ.get('IT_DB_PORT') or config.get('IT_DB_PORT', '5433'),
         'user': os.environ.get('IT_DB_USER') or config.get('IT_DB_USER', 'user'),
         'password': os.environ.get('IT_DB_PASSWORD') or config.get('IT_DB_PASSWORD', 'password'),
         'name': os.environ.get('IT_DB_NAME') or config.get('IT_DB_NAME', 'medinsights_it')
