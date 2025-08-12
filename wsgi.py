@@ -15,7 +15,7 @@ app.wsgi_app = ProxyFix(
 
 if __name__ == '__main__':
     # Forza porta 5005 in development
-    port = int(os.environ.get('PORT', 5005))
+    port = int(os.environ.get('PORT', 5008))
     host = os.environ.get('HOST', '127.0.0.1')
     debug = os.environ.get('ENV', 'LOCAL') != 'PRODUCTION'
     
