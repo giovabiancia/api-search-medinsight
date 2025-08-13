@@ -6,6 +6,6 @@ python -m venv venv
 source venv/bin/activate # Linux/Mac
 pip install -r requirements.txt
 
-## Esegui
+## Esegui script
 
 flask run
