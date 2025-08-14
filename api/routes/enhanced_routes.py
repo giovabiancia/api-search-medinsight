@@ -247,6 +247,7 @@ def search_doctors_advanced():
         max_rate = request_data.get('max_rate')
         has_slots = request_data.get('has_slots')
         allow_questions = request_data.get('allow_questions')
+        limit = request_data.get('limit')
         
         # Converti parametri boolean
         if has_slots is not None:
@@ -266,6 +267,7 @@ def search_doctors_advanced():
             max_rate=max_rate,
             has_slots=has_slots,
             allow_questions=allow_questions,
+            limit=limit,
             country_code=country
         )
         
@@ -318,6 +320,7 @@ def search_doctors_advanced_by_country(country):
         max_rate = request_data.get('max_rate')
         has_slots = request_data.get('has_slots')
         allow_questions = request_data.get('allow_questions')
+        limit = request_data.get('limit')
         
         # Converti parametri boolean
         if has_slots is not None:
@@ -337,6 +340,7 @@ def search_doctors_advanced_by_country(country):
             max_rate=max_rate,
             has_slots=has_slots,
             allow_questions=allow_questions,
+            limit=limit,
             country_code=country
         )
         

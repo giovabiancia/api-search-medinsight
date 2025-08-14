@@ -3,7 +3,7 @@
 git clone https://gitlab.com/projects28/medinsights-be.git
 cd medinsights-be
 python -m venv venv
-source venv/bin/activate # Linux/Mac
+source venv/bin/activate
 pip install -r requirements.txt
 
 ## Esegui script

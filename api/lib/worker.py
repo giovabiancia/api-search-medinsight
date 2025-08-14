@@ -210,6 +210,7 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
             max_rate = self.request_data.get('max_rate')
             has_slots = self.request_data.get('has_slots')
             allow_questions = self.request_data.get('allow_questions')
+            limit = self.request_data.get('limit')
             
             # Converti stringhe boolean
             if has_slots is not None:
@@ -225,6 +226,7 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
                 max_rate=max_rate,
                 has_slots=has_slots,
                 allow_questions=allow_questions,
+                limit=limit,
                 country_code=self.country_code
             )
             

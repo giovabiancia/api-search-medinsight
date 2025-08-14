@@ -307,7 +307,7 @@ def get_clinic_services_query(clinic_id, country_code='IT'):
 
 def search_doctors_advanced_query(search_term=None, city=None, profession=None, 
                                  min_rate=None, max_rate=None, has_slots=None, 
-                                 allow_questions=None, country_code='IT'):
+                                 allow_questions=None,limit=None, country_code='IT'):
     """
     Advanced search for doctors with multiple filters
     :param search_term: string, search in doctor name
@@ -321,7 +321,7 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
     :return: SQL query string
     """
     
-    base_query = """
+    base_query = f"""
             SELECT 
                 -- Doctor details
                 d.doctor_id, d.salutation, d.given_name, d.surname, d.full_name, d.gender, 
@@ -338,6 +338,7 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
             LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
             LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
             WHERE 1=1
+            LIMIT {limit}
             """
     
     conditions = []
