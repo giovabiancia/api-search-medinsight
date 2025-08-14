@@ -7,7 +7,7 @@
 @gitlab:        https://gitlab.com/projects28/medinsights-be.git
 @domain name:
 @Hostname:      DigitalOcean
-@Description:   SQL queries per MedInsights API - supporto multi-paese
+@Description:   SQL queries per MedInsights API - supporto multi-paese (CORRECTED)
 
 """
 
@@ -68,7 +68,6 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 WHERE UPPER(c.city_name) = '{city}' AND UPPER(s.specialization_name) = '{profession}'
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
-                
                 """
 
     elif profession:
@@ -92,7 +91,6 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 WHERE UPPER(s.specialization_name) = '{profession}'
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
-                
                 """
 
     elif city:
@@ -116,7 +114,6 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 WHERE UPPER(c.city_name) = '{city}'
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
-                
                 """
     else:
         # Demo: Retrieve only few practitioners for demo
@@ -307,7 +304,7 @@ def get_clinic_services_query(clinic_id, country_code='IT'):
 
 def search_doctors_advanced_query(search_term=None, city=None, profession=None, 
                                  min_rate=None, max_rate=None, has_slots=None, 
-                                 allow_questions=None,limit=None, country_code='IT'):
+                                 allow_questions=None, limit=None, country_code='IT'):
     """
     Advanced search for doctors with multiple filters
     :param search_term: string, search in doctor name
@@ -317,11 +314,12 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
     :param max_rate: int, maximum rating
     :param has_slots: boolean, has available slots
     :param allow_questions: boolean, allows questions
+    :param limit: int, maximum number of results
     :param country_code: string, country code (DE, IT)
     :return: SQL query string
     """
     
-    base_query = f"""
+    base_query = """
             SELECT 
                 -- Doctor details
                 d.doctor_id, d.salutation, d.given_name, d.surname, d.full_name, d.gender, 
@@ -338,7 +336,6 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
             LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
             LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
             WHERE 1=1
-            LIMIT {limit}
             """
     
     conditions = []
@@ -371,6 +368,10 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
         base_query += " AND " + " AND ".join(conditions)
     
     base_query += " ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name"
+    
+    # Add LIMIT only if specified
+    if limit is not None:
+        base_query += f" LIMIT {limit}"
     
     loggerManager.logger.info(f"Advanced search query for country {country_code}: {base_query}")
     return base_query
