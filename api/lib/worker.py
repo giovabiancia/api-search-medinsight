@@ -7,7 +7,7 @@
 @gitlab:        https://gitlab.com/projects28/medinsights-be.git
 @domain name:
 @Hostname:      DigitalOcean
-@Description:   Worker esteso per MedInsights API con supporto completo
+@Description:   Worker esteso per MedInsights API con supporto completo e servizi
 """
 
 from flask import g
@@ -24,6 +24,120 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
         self.country_code = country_code.upper()
         self.result_data = None
         self.operation_successful = False
+
+    def _transform_to_api_structure(self, raw_data):
+        """
+        Trasforma i dati grezzi del database nella struttura API originale
+        includendo i servizi nelle responsibilities
+        :param raw_data: dati grezzi dal database
+        :return: lista di dizionari strutturati
+        """
+        if not raw_data:
+            return []
+
+        # Gestisci record singolo
+        if isinstance(raw_data, dict):
+            raw_data = [raw_data]
+
+        # Raggruppa dati per doctor_id e clinic_id per gestire i servizi correttamente
+        doctors_dict = defaultdict(lambda: {
+            'details': {},
+            'clinics': {},
+            'specializations': {},
+            'services': defaultdict(list)  # Servizi raggruppati per clinic_id
+        })
+
+        for record in raw_data:
+            doctor_id = record['doctor_id']
+            clinic_id = record.get('clinic_id')
+            
+            # Estrai dettagli dottore
+            if not doctors_dict[doctor_id]['details']:
+                doctors_dict[doctor_id]['details'] = {
+                    'doctor_id': record['doctor_id'],
+                    'salutation': record.get('salutation'),
+                    'given_name': record.get('given_name'),
+                    'surname': record.get('surname'),
+                    'full_name': record.get('full_name'),
+                    'gender': record.get('gender'),
+                    'rate': record.get('rate', 0),
+                    'branding': record.get('branding'),
+                    'has_slots': record.get('has_slots', False),
+                    'allow_questions': record.get('allow_questions', False),
+                    'url': record.get('url')
+                }
+
+            # Estrai dettagli clinica
+            if clinic_id and clinic_id not in doctors_dict[doctor_id]['clinics']:
+                clinic_data = {
+                    'clinic_id': clinic_id,
+                    'clinic_name': record.get('clinic_name'),
+                    'street': record.get('street'),
+                    'city_name': record.get('city_name'),
+                    'post_code': record.get('post_code'),
+                    'province': record.get('province'),
+                    'latitude': record.get('latitude'),
+                    'longitude': record.get('longitude'),
+                    'calendar_active': record.get('calendar_active', False),
+                    'online_payment': record.get('online_payment', False),
+                    'non_doctor': record.get('non_doctor', False),
+                    'default_fee': record.get('default_fee'),
+                    'fee': record.get('fee'),
+                    'doctor_id': record['doctor_id'],
+                    'responsibilities': []  # Sarà popolato dopo
+                }
+                
+                # Aggiungi campi specifici per cliniche con slot
+                if 'clinic_has_slots' in record:
+                    clinic_data['has_slots'] = record.get('clinic_has_slots', False)
+                if 'nearest_slot_date' in record:
+                    clinic_data['nearest_slot_date'] = record.get('nearest_slot_date')
+                    
+                doctors_dict[doctor_id]['clinics'][clinic_id] = clinic_data
+
+            # Estrai dettagli specializzazione
+            if record.get('specialization_name') and record['specialization_name'] not in doctors_dict[doctor_id]['specializations']:
+                doctors_dict[doctor_id]['specializations'][record['specialization_name']] = {
+                    'doctor_id': record['doctor_id'],
+                    'specialization_name': record['specialization_name'],
+                    'name_plural': record.get('name_plural'),
+                    'is_popular': record.get('is_popular', False),
+                    'count': record.get('count', 1)
+                }
+
+            # Estrai servizi/responsabilità
+            if clinic_id and record.get('service_id') and record.get('service_name'):
+                service_data = {
+                    'service_id': record['service_id'],
+                    'service_name': record['service_name'],
+                    'description': record.get('service_description'),
+                    'price': record.get('service_price'),
+                    'price_decimal': record.get('service_price_decimal'),
+                    'is_price_from': record.get('is_price_from', False),
+                    'is_default': record.get('is_default_service', False)
+                }
+                
+                # Evita duplicati per lo stesso servizio nella stessa clinica
+                clinic_services = doctors_dict[doctor_id]['services'][clinic_id]
+                if not any(s['service_id'] == service_data['service_id'] for s in clinic_services):
+                    clinic_services.append(service_data)
+
+        # Converti nella struttura API finale
+        items = []
+        for doctor_id, doctor_data in doctors_dict.items():
+            # Popola responsibilities per ogni clinica
+            for clinic_id, clinic_info in doctor_data['clinics'].items():
+                services = doctor_data['services'].get(clinic_id, [])
+                clinic_info['responsibilities'] = services
+
+            item = {
+                'details': doctor_data['details'],
+                'clinics': list(doctor_data['clinics'].values()),
+                'specializations': list(doctor_data['specializations'].values())
+            }
+            items.append(item)
+
+        return items
 
     def get_specializations(self):
         """
@@ -369,95 +483,6 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
             self.result_data = []
 
         return self
-
-    def _transform_to_api_structure(self, raw_data):
-        """
-        Trasforma i dati grezzi del database nella struttura API originale
-        :param raw_data: dati grezzi dal database
-        :return: lista di dizionari strutturati
-        """
-        if not raw_data:
-            return []
-
-        # Gestisci record singolo
-        if isinstance(raw_data, dict):
-            raw_data = [raw_data]
-
-        # Raggruppa dati per doctor_id
-        doctors_dict = defaultdict(lambda: {
-            'details': {},
-            'clinics': {},
-            'specializations': {}
-        })
-
-        for record in raw_data:
-            doctor_id = record['doctor_id']
-            
-            # Estrai dettagli dottore
-            if not doctors_dict[doctor_id]['details']:
-                doctors_dict[doctor_id]['details'] = {
-                    'doctor_id': record['doctor_id'],
-                    'salutation': record.get('salutation'),
-                    'given_name': record.get('given_name'),
-                    'surname': record.get('surname'),
-                    'full_name': record.get('full_name'),
-                    'gender': record.get('gender'),
-                    'rate': record.get('rate', 0),
-                    'branding': record.get('branding'),
-                    'has_slots': record.get('has_slots', False),
-                    'allow_questions': record.get('allow_questions', False),
-                    'url': record.get('url')
-                }
-
-            # Estrai dettagli clinica
-            if record.get('clinic_id') and record['clinic_id'] not in doctors_dict[doctor_id]['clinics']:
-                clinic_data = {
-                    'clinic_id': record['clinic_id'],
-                    'clinic_name': record.get('clinic_name'),
-                    'street': record.get('street'),
-                    'city_name': record.get('city_name'),
-                    'post_code': record.get('post_code'),
-                    'province': record.get('province'),
-                    'latitude': record.get('latitude'),
-                    'longitude': record.get('longitude'),
-                    'calendar_active': record.get('calendar_active', False),
-                    'online_payment': record.get('online_payment', False),
-                    'non_doctor': record.get('non_doctor', False),
-                    'default_fee': record.get('default_fee'),
-                    'fee': record.get('fee'),
-                    'doctor_id': record['doctor_id'],
-                    'responsibilities': []  # Array vuoto come da struttura originale
-                }
-                
-                # Aggiungi campi specifici per cliniche con slot
-                if 'clinic_has_slots' in record:
-                    clinic_data['has_slots'] = record.get('clinic_has_slots', False)
-                if 'nearest_slot_date' in record:
-                    clinic_data['nearest_slot_date'] = record.get('nearest_slot_date')
-                    
-                doctors_dict[doctor_id]['clinics'][record['clinic_id']] = clinic_data
-
-            # Estrai dettagli specializzazione
-            if record.get('specialization_name') and record['specialization_name'] not in doctors_dict[doctor_id]['specializations']:
-                doctors_dict[doctor_id]['specializations'][record['specialization_name']] = {
-                    'doctor_id': record['doctor_id'],
-                    'specialization_name': record['specialization_name'],
-                    'name_plural': record.get('name_plural'),
-                    'is_popular': record.get('is_popular', False),
-                    'count': record.get('count', 1)
-                }
-
-        # Converti nella struttura API finale
-        items = []
-        for doctor_id, doctor_data in doctors_dict.items():
-            item = {
-                'details': doctor_data['details'],
-                'clinics': list(doctor_data['clinics'].values()),
-                'specializations': list(doctor_data['specializations'].values())
-            }
-            items.append(item)
-
-        return items
 
     def execute_query(self, query, country_code=None):
         """

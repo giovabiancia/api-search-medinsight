@@ -7,7 +7,7 @@
 @gitlab:        https://gitlab.com/projects28/medinsights-be.git
 @domain name:
 @Hostname:      DigitalOcean
-@Description:   SQL queries per MedInsights API - supporto multi-paese (CORRECTED)
+@Description:   SQL queries per MedInsights API - supporto multi-paese con servizi (UPDATED)
 
 """
 
@@ -16,7 +16,7 @@ from api.lib import loggerManager
 
 def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='IT'):
     """
-    Get doctors query for specific country database
+    Get doctors query for specific country database with services
     :param doctor_id: int doctor id
     :param city: string city name
     :param profession: string, profession
@@ -25,7 +25,7 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
     """
     
     if doctor_id:
-        # Retrieve doctor's complete information by ID
+        # Retrieve doctor's complete information by ID including services
         query = f"""
                 SELECT 
                     -- Doctor details
@@ -36,18 +36,23 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.latitude, c.longitude, c.calendar_active, c.online_payment, c.non_doctor,
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
-                    s.specialization_name, s.name_plural, s.is_popular, 1 as count
+                    s.specialization_name, s.name_plural, s.is_popular, 1 as count,
+                    -- Service details
+                    so.service_id, so.option_name as service_name, so.description as service_description,
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
                 LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
+                LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
+                LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
                 WHERE d.doctor_id = {doctor_id}
-                ORDER BY d.doctor_id, c.clinic_id, s.specialization_name
+                ORDER BY d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 """
 
     elif city and profession:
-        # Retrieve practitioners from the city with specific profession
+        # Retrieve practitioners from the city with specific profession including services
         profession = profession.upper()
         city = city.upper()
         query = f"""
@@ -60,18 +65,23 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.latitude, c.longitude, c.calendar_active, c.online_payment, c.non_doctor,
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
-                    s.specialization_name, s.name_plural, s.is_popular, 1 as count
+                    s.specialization_name, s.name_plural, s.is_popular, 1 as count,
+                    -- Service details
+                    so.service_id, so.option_name as service_name, so.description as service_description,
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
                 LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
+                LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
+                LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
                 WHERE UPPER(c.city_name) = '{city}' AND UPPER(s.specialization_name) = '{profession}'
-                ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
+                ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 """
 
     elif profession:
-        # Retrieve all practitioners matching the profession
+        # Retrieve all practitioners matching the profession including services
         profession = profession.upper()
         query = f"""
                 SELECT 
@@ -83,18 +93,23 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.latitude, c.longitude, c.calendar_active, c.online_payment, c.non_doctor,
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
-                    s.specialization_name, s.name_plural, s.is_popular, 1 as count
+                    s.specialization_name, s.name_plural, s.is_popular, 1 as count,
+                    -- Service details
+                    so.service_id, so.option_name as service_name, so.description as service_description,
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
                 LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
+                LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
+                LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
                 WHERE UPPER(s.specialization_name) = '{profession}'
-                ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
+                ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 """
 
     elif city:
-        # Retrieve all practitioners from the specified city
+        # Retrieve all practitioners from the specified city including services
         city = city.upper()
         query = f"""
                 SELECT 
@@ -106,17 +121,22 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.latitude, c.longitude, c.calendar_active, c.online_payment, c.non_doctor,
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
-                    s.specialization_name, s.name_plural, s.is_popular, 1 as count
+                    s.specialization_name, s.name_plural, s.is_popular, 1 as count,
+                    -- Service details
+                    so.service_id, so.option_name as service_name, so.description as service_description,
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
                 LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
+                LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
+                LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
                 WHERE UPPER(c.city_name) = '{city}'
-                ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
+                ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 """
     else:
-        # Demo: Retrieve only few practitioners for demo
+        # Demo: Retrieve only few practitioners for demo including services
         query = f"""
                 SELECT 
                     -- Doctor details
@@ -127,13 +147,18 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     c.latitude, c.longitude, c.calendar_active, c.online_payment, c.non_doctor,
                     c.default_fee, c.fee,
                     -- Specialization details via mapping table
-                    s.specialization_name, s.name_plural, s.is_popular, 1 as count
+                    s.specialization_name, s.name_plural, s.is_popular, 1 as count,
+                    -- Service details
+                    so.service_id, so.option_name as service_name, so.description as service_description,
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
                 LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
-                ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name
+                LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
+                LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+                ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 LIMIT 50
                 """
     
@@ -141,6 +166,138 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
     return query
 
 
+def search_doctors_advanced_query(search_term=None, city=None, profession=None, 
+                                 min_rate=None, max_rate=None, has_slots=None, 
+                                 allow_questions=None, limit=None, country_code='IT'):
+    """
+    Advanced search for doctors with multiple filters including services
+    :param search_term: string, search in doctor name
+    :param city: string, city name
+    :param profession: string, profession/specialization
+    :param min_rate: int, minimum rating
+    :param max_rate: int, maximum rating
+    :param has_slots: boolean, has available slots
+    :param allow_questions: boolean, allows questions
+    :param limit: int, maximum number of results
+    :param country_code: string, country code (DE, IT)
+    :return: SQL query string
+    """
+    
+    base_query = """
+            SELECT 
+                -- Doctor details
+                d.doctor_id, d.salutation, d.given_name, d.surname, d.full_name, d.gender, 
+                d.rate, d.branding, d.has_slots, d.allow_questions, d.url,
+                -- Clinic details via mapping table
+                c.clinic_id, c.clinic_name, c.street, c.city_name, c.post_code, c.province,
+                c.latitude, c.longitude, c.calendar_active, c.online_payment, c.non_doctor,
+                c.default_fee, c.fee,
+                -- Specialization details via mapping table
+                s.specialization_name, s.name_plural, s.is_popular, 1 as count,
+                -- Service details
+                so.service_id, so.option_name as service_name, so.description as service_description,
+                csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
+            FROM doctors.doctors d
+            LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+            LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+            LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
+            LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
+            LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
+            LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+            WHERE 1=1
+            """
+    
+    conditions = []
+    
+    if search_term:
+        search_term = search_term.replace("'", "''")  # Escape single quotes
+        conditions.append(f"(UPPER(d.full_name) LIKE UPPER('%{search_term}%') OR UPPER(d.given_name) LIKE UPPER('%{search_term}%') OR UPPER(d.surname) LIKE UPPER('%{search_term}%'))")
+    
+    if city:
+        city = city.upper().replace("'", "''")
+        conditions.append(f"UPPER(c.city_name) = '{city}'")
+    
+    if profession:
+        profession = profession.upper().replace("'", "''")
+        conditions.append(f"UPPER(s.specialization_name) = '{profession}'")
+    
+    if min_rate is not None:
+        conditions.append(f"d.rate >= {min_rate}")
+    
+    if max_rate is not None:
+        conditions.append(f"d.rate <= {max_rate}")
+    
+    if has_slots is not None:
+        conditions.append(f"d.has_slots = {has_slots}")
+    
+    if allow_questions is not None:
+        conditions.append(f"d.allow_questions = {allow_questions}")
+    
+    if conditions:
+        base_query += " AND " + " AND ".join(conditions)
+    
+    base_query += " ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name"
+    
+    # Add LIMIT only if specified
+    if limit is not None:
+        base_query += f" LIMIT {limit}"
+    
+    loggerManager.logger.info(f"Advanced search query for country {country_code}: {base_query}")
+    return base_query
+
+
+def get_doctors_with_slots_query(city=None, profession=None, country_code='IT'):
+    """
+    Get doctors with available slots including services
+    :param city: string, city name (optional)
+    :param profession: string, profession/specialization (optional)
+    :param country_code: string, country code (DE, IT)
+    :return: SQL query string
+    """
+    base_query = """
+            SELECT 
+                -- Doctor details
+                d.doctor_id, d.salutation, d.given_name, d.surname, d.full_name, d.gender, 
+                d.rate, d.branding, d.has_slots, d.allow_questions, d.url,
+                -- Clinic details via mapping table
+                c.clinic_id, c.clinic_name, c.street, c.city_name, c.post_code, c.province,
+                c.latitude, c.longitude, c.calendar_active, c.online_payment, c.non_doctor,
+                c.default_fee, c.fee, c.has_slots as clinic_has_slots, c.nearest_slot_date,
+                -- Specialization details via mapping table
+                s.specialization_name, s.name_plural, s.is_popular, 1 as count,
+                -- Service details
+                so.service_id, so.option_name as service_name, so.description as service_description,
+                csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
+            FROM doctors.doctors d
+            LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+            LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+            LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
+            LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
+            LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
+            LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+            WHERE (d.has_slots = true OR c.has_slots = true)
+            """
+    
+    conditions = []
+    
+    if city:
+        city = city.upper().replace("'", "''")
+        conditions.append(f"UPPER(c.city_name) = '{city}'")
+    
+    if profession:
+        profession = profession.upper().replace("'", "''")
+        conditions.append(f"UPPER(s.specialization_name) = '{profession}'")
+    
+    if conditions:
+        base_query += " AND " + " AND ".join(conditions)
+    
+    base_query += " ORDER BY d.rate DESC, c.nearest_slot_date ASC NULLS LAST, csom.is_default DESC, so.option_name"
+    
+    loggerManager.logger.info(f"Doctors with slots query for country {country_code}: {base_query}")
+    return base_query
+
+
+# Keep all other existing functions unchanged...
 def get_specializations_query(country_code='IT'):
     """
     Get all specializations for a specific country
@@ -302,81 +459,6 @@ def get_clinic_services_query(clinic_id, country_code='IT'):
     return query
 
 
-def search_doctors_advanced_query(search_term=None, city=None, profession=None, 
-                                 min_rate=None, max_rate=None, has_slots=None, 
-                                 allow_questions=None, limit=None, country_code='IT'):
-    """
-    Advanced search for doctors with multiple filters
-    :param search_term: string, search in doctor name
-    :param city: string, city name
-    :param profession: string, profession/specialization
-    :param min_rate: int, minimum rating
-    :param max_rate: int, maximum rating
-    :param has_slots: boolean, has available slots
-    :param allow_questions: boolean, allows questions
-    :param limit: int, maximum number of results
-    :param country_code: string, country code (DE, IT)
-    :return: SQL query string
-    """
-    
-    base_query = """
-            SELECT 
-                -- Doctor details
-                d.doctor_id, d.salutation, d.given_name, d.surname, d.full_name, d.gender, 
-                d.rate, d.branding, d.has_slots, d.allow_questions, d.url,
-                -- Clinic details via mapping table
-                c.clinic_id, c.clinic_name, c.street, c.city_name, c.post_code, c.province,
-                c.latitude, c.longitude, c.calendar_active, c.online_payment, c.non_doctor,
-                c.default_fee, c.fee,
-                -- Specialization details via mapping table
-                s.specialization_name, s.name_plural, s.is_popular, 1 as count
-            FROM doctors.doctors d
-            LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
-            LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
-            LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
-            LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
-            WHERE 1=1
-            """
-    
-    conditions = []
-    
-    if search_term:
-        search_term = search_term.replace("'", "''")  # Escape single quotes
-        conditions.append(f"(UPPER(d.full_name) LIKE UPPER('%{search_term}%') OR UPPER(d.given_name) LIKE UPPER('%{search_term}%') OR UPPER(d.surname) LIKE UPPER('%{search_term}%'))")
-    
-    if city:
-        city = city.upper().replace("'", "''")
-        conditions.append(f"UPPER(c.city_name) = '{city}'")
-    
-    if profession:
-        profession = profession.upper().replace("'", "''")
-        conditions.append(f"UPPER(s.specialization_name) = '{profession}'")
-    
-    if min_rate is not None:
-        conditions.append(f"d.rate >= {min_rate}")
-    
-    if max_rate is not None:
-        conditions.append(f"d.rate <= {max_rate}")
-    
-    if has_slots is not None:
-        conditions.append(f"d.has_slots = {has_slots}")
-    
-    if allow_questions is not None:
-        conditions.append(f"d.allow_questions = {allow_questions}")
-    
-    if conditions:
-        base_query += " AND " + " AND ".join(conditions)
-    
-    base_query += " ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name"
-    
-    # Add LIMIT only if specified
-    if limit is not None:
-        base_query += f" LIMIT {limit}"
-    
-    loggerManager.logger.info(f"Advanced search query for country {country_code}: {base_query}")
-    return base_query
-
-
 def get_popular_specializations_query(limit=10, country_code='IT'):
     """
     Get most popular specializations
@@ -432,52 +514,6 @@ def get_top_rated_doctors_query(limit=20, min_rate=4, country_code='IT'):
     
     loggerManager.logger.info(f"Top rated doctors query for country {country_code}: {query}")
     return query
-
-
-def get_doctors_with_slots_query(city=None, profession=None, country_code='IT'):
-    """
-    Get doctors with available slots
-    :param city: string, city name (optional)
-    :param profession: string, profession/specialization (optional)
-    :param country_code: string, country code (DE, IT)
-    :return: SQL query string
-    """
-    base_query = """
-            SELECT 
-                -- Doctor details
-                d.doctor_id, d.salutation, d.given_name, d.surname, d.full_name, d.gender, 
-                d.rate, d.branding, d.has_slots, d.allow_questions, d.url,
-                -- Clinic details via mapping table
-                c.clinic_id, c.clinic_name, c.street, c.city_name, c.post_code, c.province,
-                c.latitude, c.longitude, c.calendar_active, c.online_payment, c.non_doctor,
-                c.default_fee, c.fee, c.has_slots as clinic_has_slots, c.nearest_slot_date,
-                -- Specialization details via mapping table
-                s.specialization_name, s.name_plural, s.is_popular, 1 as count
-            FROM doctors.doctors d
-            LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
-            LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
-            LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
-            LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
-            WHERE (d.has_slots = true OR c.has_slots = true)
-            """
-    
-    conditions = []
-    
-    if city:
-        city = city.upper().replace("'", "''")
-        conditions.append(f"UPPER(c.city_name) = '{city}'")
-    
-    if profession:
-        profession = profession.upper().replace("'", "''")
-        conditions.append(f"UPPER(s.specialization_name) = '{profession}'")
-    
-    if conditions:
-        base_query += " AND " + " AND ".join(conditions)
-    
-    base_query += " ORDER BY d.rate DESC, c.nearest_slot_date ASC NULLS LAST"
-    
-    loggerManager.logger.info(f"Doctors with slots query for country {country_code}: {base_query}")
-    return base_query
 
 
 def get_database_stats_query(country_code='IT'):
