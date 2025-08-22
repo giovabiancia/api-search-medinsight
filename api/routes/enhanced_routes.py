@@ -889,3 +889,269 @@ def api_info():
         "note": "All endpoints are now fully implemented with proper database queries"
     }
     return jsonify(output)
+
+# Aggiungi questi endpoint alla fine di api/routes/enhanced_routes.py
+
+# ====================== GOOGLE PLACES ENDPOINTS ======================
+
+@enhanced_bp.route('/google-places/save', methods=('POST',))
+def save_google_place():
+    """Salva dati da Google Places API (doctor_id obbligatorio)"""
+    if not request.is_json:
+        raise error_handlers.InvalidAPIUsage(message="Content-Type must be application/json", status_code=400)
+    
+    place_data = request.json
+    country = validate_country_and_connection(place_data.get('country', 'IT'))
+    
+    try:
+        # Validazione dati essenziali
+        if not place_data.get('google_place_id'):
+            raise error_handlers.InvalidAPIUsage(message="google_place_id is required", status_code=400)
+        
+        if not place_data.get('doctor_id'):
+            raise error_handlers.InvalidAPIUsage(message="doctor_id is required", status_code=400)
+        
+        # Salva usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.save_google_place_data(place_data)
+        
+        if med_worker.operation_successful:
+            output = {
+                "success": True,
+                "message": "Google Place data saved successfully",
+                "data": med_worker.result_data,
+                "country": country
+            }
+            status_code = 201
+        else:
+            output = {
+                "success": False,
+                "message": "Failed to save Google Place data",
+                "error": med_worker.result_data,
+                "country": country
+            }
+            status_code = 400
+            
+    except Exception as e:
+        loggerManager.logger.error(f"Error in save_google_place: {e}")
+        output = {
+            "success": False,
+            "message": "Error saving Google Place data",
+            "error": str(e),
+            "country": country
+        }
+        status_code = 500
+    
+    return jsonify(output), status_code
+
+
+@enhanced_bp.route('/<country>/google-places/save', methods=('POST',))
+def save_google_place_by_country(country):
+    """Salva dati Google Places per paese specifico"""
+    country = validate_country_and_connection(country)
+    
+    if not request.is_json:
+        raise error_handlers.InvalidAPIUsage(message="Content-Type must be application/json", status_code=400)
+    
+    place_data = request.json
+    
+    try:
+        # Validazione dati essenziali
+        if not place_data.get('google_place_id'):
+            raise error_handlers.InvalidAPIUsage(message="google_place_id is required", status_code=400)
+        
+        if not place_data.get('doctor_id'):
+            raise error_handlers.InvalidAPIUsage(message="doctor_id is required", status_code=400)
+        
+        # Salva usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.save_google_place_data(place_data)
+        
+        if med_worker.operation_successful:
+            output = {
+                "success": True,
+                "message": "Google Place data saved successfully",
+                "data": med_worker.result_data,
+                "country": country
+            }
+            status_code = 201
+        else:
+            output = {
+                "success": False,
+                "message": "Failed to save Google Place data",
+                "error": med_worker.result_data,
+                "country": country
+            }
+            status_code = 400
+            
+    except Exception as e:
+        loggerManager.logger.error(f"Error in save_google_place_by_country: {e}")
+        output = {
+            "success": False,
+            "message": "Error saving Google Place data",
+            "error": str(e),
+            "country": country
+        }
+        status_code = 500
+    
+    return jsonify(output), status_code
+
+
+@enhanced_bp.route('/google-places', methods=('GET',))
+def get_google_places():
+    """Recupera dati Google Places salvati con informazioni del dottore"""
+    request_data = util.process_request(request)
+    country = validate_country_and_connection(request_data.get('country', 'IT'))
+    
+    try:
+        google_place_id = request_data.get('google_place_id')
+        doctor_id = request_data.get('doctor_id')
+        limit = request_data.get('limit')
+        
+        if doctor_id:
+            doctor_id = int(doctor_id)
+        if limit:
+            limit = int(limit)
+        
+        # Recupera usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_google_places_data(
+            google_place_id=google_place_id,
+            doctor_id=doctor_id,
+            limit=limit
+        )
+        
+        output = {
+            "items": med_worker.result_data if med_worker.result_data else [],
+            "country": country,
+            "filters": {
+                "google_place_id": google_place_id,
+                "doctor_id": doctor_id,
+                "limit": limit
+            },
+            "total": len(med_worker.result_data) if med_worker.result_data else 0
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_google_places: {e}")
+        output = {
+            "error": "Error retrieving Google Places data",
+            "country": country,
+            "items": []
+        }
+    
+    return jsonify(output)
+
+
+@enhanced_bp.route('/<country>/google-places', methods=('GET',))
+def get_google_places_by_country(country):
+    """Recupera dati Google Places per paese specifico"""
+    country = validate_country_and_connection(country)
+    request_data = util.process_request(request)
+    
+    try:
+        google_place_id = request_data.get('google_place_id')
+        doctor_id = request_data.get('doctor_id')
+        limit = request_data.get('limit')
+        
+        if doctor_id:
+            doctor_id = int(doctor_id)
+        if limit:
+            limit = int(limit)
+        
+        # Recupera usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_google_places_data(
+            google_place_id=google_place_id,
+            doctor_id=doctor_id,
+            limit=limit
+        )
+        
+        output = {
+            "items": med_worker.result_data if med_worker.result_data else [],
+            "country": country,
+            "filters": {
+                "google_place_id": google_place_id,
+                "doctor_id": doctor_id,
+                "limit": limit
+            },
+            "total": len(med_worker.result_data) if med_worker.result_data else 0
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_google_places_by_country: {e}")
+        output = {
+            "error": "Error retrieving Google Places data",
+            "country": country,
+            "items": []
+        }
+    
+    return jsonify(output)
+
+
+@enhanced_bp.route('/doctors/<int:doctor_id>/google-places', methods=('GET',))
+def get_doctor_google_places(doctor_id):
+    """Recupera tutti i Google Places di un dottore specifico"""
+    request_data = util.process_request(request)
+    country = validate_country_and_connection(request_data.get('country', 'IT'))
+    
+    try:
+        limit = request_data.get('limit')
+        if limit:
+            limit = int(limit)
+        
+        # Recupera usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_google_places_data(doctor_id=doctor_id, limit=limit)
+        
+        output = {
+            "items": med_worker.result_data if med_worker.result_data else [],
+            "doctor_id": doctor_id,
+            "country": country,
+            "total": len(med_worker.result_data) if med_worker.result_data else 0
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_doctor_google_places: {e}")
+        output = {
+            "error": "Error retrieving doctor Google Places data",
+            "doctor_id": doctor_id,
+            "country": country,
+            "items": []
+        }
+    
+    return jsonify(output)
+
+
+@enhanced_bp.route('/<country>/doctors/<int:doctor_id>/google-places', methods=('GET',))
+def get_doctor_google_places_by_country(country, doctor_id):
+    """Recupera Google Places di un dottore per paese specifico"""
+    country = validate_country_and_connection(country)
+    request_data = util.process_request(request)
+    
+    try:
+        limit = request_data.get('limit')
+        if limit:
+            limit = int(limit)
+        
+        # Recupera usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_google_places_data(doctor_id=doctor_id, limit=limit)
+        
+        output = {
+            "items": med_worker.result_data if med_worker.result_data else [],
+            "doctor_id": doctor_id,
+            "country": country,
+            "total": len(med_worker.result_data) if med_worker.result_data else 0
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_doctor_google_places_by_country: {e}")
+        output = {
+            "error": "Error retrieving doctor Google Places data",
+            "doctor_id": doctor_id,
+            "country": country,
+            "items": []
+        }
+    
+    return jsonify(output)

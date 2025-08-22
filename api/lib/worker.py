@@ -515,6 +515,79 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
             raise e
         
         return self
+    # Aggiungi questi metodi alla classe EnhancedMedicalWorker in api/lib/worker.py
+
+    def save_google_place_data(self, place_data):
+        """
+        Salva dati Google Places nella tabella dedicata (doctor_id obbligatorio)
+        :param place_data: dict, dati da Google Places API (deve includere doctor_id)
+        :return: self
+        """
+        loggerManager.logger.debug(f"Saving Google Place data for country: {self.country_code}")
+        
+        try:
+            # Validazione dati essenziali
+            if not place_data.get('google_place_id'):
+                raise ValueError("google_place_id is required")
+            
+            if not place_data.get('doctor_id'):
+                raise ValueError("doctor_id is required - Google Place must be linked to a doctor")
+            
+            query = sql_queries.insert_google_place_data_query(place_data, country_code=self.country_code)
+            self.execute_query(query, country_code=self.country_code)
+            
+            if self.query_result:
+                self.result_data = self.query_result
+                self.operation_successful = True
+                doctor_id = self.query_result.get('doctor_id')
+                loggerManager.logger.info(f"Successfully saved Google Place: {place_data.get('google_place_id')} for doctor_id: {doctor_id}")
+            else:
+                self.result_data = {}
+                self.operation_successful = False
+                loggerManager.logger.warning(f"Failed to save Google Place: {place_data.get('google_place_id')}")
+                
+        except Exception as e:
+            loggerManager.logger.error(f"Error saving Google Place data for country {self.country_code}: {e}")
+            self.operation_successful = False
+            self.result_data = {"error": str(e)}
+
+        return self
+
+    def get_google_places_data(self, google_place_id=None, doctor_id=None, limit=None):
+        """
+        Recupera dati Google Places salvati con informazioni del dottore
+        :param google_place_id: string, ID specifico (opzionale)
+        :param doctor_id: int, ID dottore (opzionale)
+        :param limit: int, limite risultati (opzionale)
+        :return: self
+        """
+        loggerManager.logger.debug(f"Getting Google Places data for country: {self.country_code}")
+        
+        try:
+            query = sql_queries.get_google_places_data_query(
+                google_place_id=google_place_id,
+                doctor_id=doctor_id,
+                country_code=self.country_code,
+                limit=limit
+            )
+            self.execute_query(query, country_code=self.country_code)
+            
+            if self.query_result:
+                if isinstance(self.query_result, dict):
+                    self.result_data = [self.query_result]
+                else:
+                    self.result_data = self.query_result
+                self.operation_successful = True
+            else:
+                self.result_data = []
+                self.operation_successful = False
+                
+        except Exception as e:
+            loggerManager.logger.error(f"Error getting Google Places data for country {self.country_code}: {e}")
+            self.operation_successful = False
+            self.result_data = []
+
+        return self
 
 
 # Manteniamo la classe originale per backward compatibility
@@ -566,3 +639,4 @@ class Doctors(EnhancedMedicalWorker):
 
         loggerManager.logger.debug(f"Getting doctors complete for country: {self.country_code}")
         return self
+    

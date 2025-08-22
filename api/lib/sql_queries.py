@@ -553,3 +553,159 @@ def get_database_stats_query(country_code='IT'):
     
     loggerManager.logger.info(f"Database stats query for country {country_code}: {query}")
     return query
+
+
+
+# Aggiungi queste funzioni alla fine di api/lib/sql_queries.py
+
+def insert_google_place_data_query(place_data, country_code='IT'):
+    """
+    Insert Google Places data into google_places_data table
+    :param place_data: dict, Google Places API data (must include doctor_id)
+    :param country_code: string, country code (DE, IT)
+    :return: SQL query string
+    """
+    
+    # Validazione doctor_id obbligatorio
+    if not place_data.get('doctor_id'):
+        raise ValueError("doctor_id is required for Google Places data")
+    
+    # Escape single quotes for SQL safety
+    def escape_sql(value):
+        if value is None:
+            return 'NULL'
+        if isinstance(value, str):
+            escaped = value.replace("'", "''")
+            return f"'{escaped}'"
+        if isinstance(value, (dict, list)):
+            import json
+            json_str = json.dumps(value)
+            escaped = json_str.replace("'", "''")
+            return f"'{escaped}'"
+        return str(value)
+    
+    query = f"""
+            INSERT INTO doctors.google_places_data (
+                google_place_id,
+                doctor_id,
+                business_name,
+                business_status,
+                rating,
+                reviews_count,
+                phone,
+                email,
+                website,
+                google_maps_url,
+                formatted_address,
+                latitude,
+                longitude,
+                opening_hours,
+                photos,
+                types,
+                reviews,
+                original_doctor_name,
+                original_doctor_surname,
+                country_code,
+                enriched_at
+            ) VALUES (
+                {escape_sql(place_data.get('google_place_id'))},
+                {place_data.get('doctor_id')},
+                {escape_sql(place_data.get('business_name'))},
+                {escape_sql(place_data.get('business_status'))},
+                {place_data.get('rating') or 'NULL'},
+                {place_data.get('reviews_count', 0)},
+                {escape_sql(place_data.get('phone'))},
+                {escape_sql(place_data.get('email'))},
+                {escape_sql(place_data.get('website'))},
+                {escape_sql(place_data.get('google_maps_url'))},
+                {escape_sql(place_data.get('formatted_address'))},
+                {place_data.get('location', {}).get('lat') or 'NULL'},
+                {place_data.get('location', {}).get('lng') or 'NULL'},
+                {escape_sql(place_data.get('opening_hours'))},
+                {escape_sql(place_data.get('photos'))},
+                {escape_sql(place_data.get('types'))},
+                {escape_sql(place_data.get('reviews'))},
+                {escape_sql(place_data.get('original_doctor', {}).get('name'))},
+                {escape_sql(place_data.get('original_doctor', {}).get('surname'))},
+                {escape_sql(country_code)},
+                {escape_sql(place_data.get('enriched_at'))}
+            )
+            ON CONFLICT (google_place_id) 
+            DO UPDATE SET 
+                updated_at = NOW(),
+                rating = EXCLUDED.rating,
+                reviews_count = EXCLUDED.reviews_count,
+                reviews = EXCLUDED.reviews,
+                phone = EXCLUDED.phone,
+                email = EXCLUDED.email,
+                website = EXCLUDED.website
+            RETURNING id, google_place_id, doctor_id;
+            """
+    
+    loggerManager.logger.info(f"Insert Google Place query for doctor_id: {place_data.get('doctor_id')}, country: {country_code}")
+    return query
+
+
+def get_google_places_data_query(google_place_id=None, doctor_id=None, country_code='IT', limit=None):
+    """
+    Get Google Places data with doctor information
+    :param google_place_id: string, specific Google Place ID
+    :param doctor_id: int, specific doctor ID
+    :param country_code: string, country code (DE, IT)
+    :param limit: int, limit results
+    :return: SQL query string
+    """
+    
+    base_query = """
+            SELECT 
+                gpd.id,
+                gpd.google_place_id,
+                gpd.doctor_id,
+                gpd.business_name,
+                gpd.business_status,
+                gpd.rating,
+                gpd.reviews_count,
+                gpd.phone,
+                gpd.email,
+                gpd.website,
+                gpd.google_maps_url,
+                gpd.formatted_address,
+                gpd.latitude,
+                gpd.longitude,
+                gpd.opening_hours,
+                gpd.photos,
+                gpd.types,
+                gpd.reviews,
+                gpd.original_doctor_name,
+                gpd.original_doctor_surname,
+                gpd.country_code,
+                gpd.enriched_at,
+                gpd.created_at,
+                gpd.updated_at,
+                d.full_name as doctor_full_name,
+                d.given_name as doctor_given_name,
+                d.surname as doctor_surname,
+                d.rate as doctor_rate
+            FROM doctors.google_places_data gpd
+            INNER JOIN doctors.doctors d ON gpd.doctor_id = d.doctor_id
+            WHERE gpd.country_code = '{}'
+            """.format(country_code)
+    
+    conditions = []
+    
+    if google_place_id:
+        conditions.append(f"gpd.google_place_id = '{google_place_id}'")
+    
+    if doctor_id:
+        conditions.append(f"gpd.doctor_id = {doctor_id}")
+    
+    if conditions:
+        base_query += " AND " + " AND ".join(conditions)
+    
+    base_query += " ORDER BY gpd.created_at DESC"
+    
+    if limit:
+        base_query += f" LIMIT {limit}"
+    
+    loggerManager.logger.info(f"Get Google Places query for country {country_code}, doctor_id: {doctor_id}")
+    return base_query
