@@ -52,6 +52,8 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
         for record in raw_data:
             doctor_id = record['doctor_id']
             clinic_id = record.get('clinic_id')
+
+            
             
             # Estrai dettagli dottore
             if not doctors_dict[doctor_id]['details']:
@@ -76,7 +78,10 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
                     'google_rating': record.get('google_rating'),
                     'google_reviews_count': record.get('google_reviews_count'),
                     # Campo di comodo per il frontend
-                    'can_enrich': record.get('enriched_status', 'not_enriched') == 'not_enriched'
+                    'can_enrich': record.get('enriched_status', 'not_enriched') == 'not_enriched',
+                    "has_enrichment_attempts":record.get('has_enrichment_attempts'),
+                    "last_attempt_status":record.get('last_attempt_status'),
+                    "has_google_places_data":record.get('has_google_places_data'),
                 }
 
             # Estrai dettagli clinica
