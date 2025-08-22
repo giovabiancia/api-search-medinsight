@@ -13,6 +13,7 @@
 from flask import g
 from api.lib import filter, database_manager, sql_queries, loggerManager
 from collections import defaultdict
+from datetime import datetime
 
 
 class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQueries):
@@ -28,7 +29,7 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
     def _transform_to_api_structure(self, raw_data):
         """
         Trasforma i dati grezzi del database nella struttura API originale
-        includendo i servizi nelle responsibilities
+        includendo lo status di arricchimento Google Places e i servizi nelle responsibilities
         :param raw_data: dati grezzi dal database
         :return: lista di dizionari strutturati
         """
@@ -44,7 +45,8 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
             'details': {},
             'clinics': {},
             'specializations': {},
-            'services': defaultdict(list)  # Servizi raggruppati per clinic_id
+            'services': defaultdict(list),  # Servizi raggruppati per clinic_id
+            'enrichment_info': {}  # Informazioni enrichment Google Places
         })
 
         for record in raw_data:
@@ -64,7 +66,17 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
                     'branding': record.get('branding'),
                     'has_slots': record.get('has_slots', False),
                     'allow_questions': record.get('allow_questions', False),
-                    'url': record.get('url')
+                    'url': record.get('url'),
+                    # NUOVO: Informazioni enrichment Google Places
+                    'enriched_status': record.get('enriched_status', 'not_enriched'),
+                    'google_place_id': record.get('google_place_id'),
+                    'enriched_at': record.get('enriched_at'),
+                    'last_enrichment_update': record.get('last_enrichment_update'),
+                    'google_business_name': record.get('google_business_name'),
+                    'google_rating': record.get('google_rating'),
+                    'google_reviews_count': record.get('google_reviews_count'),
+                    # Campo di comodo per il frontend
+                    'can_enrich': record.get('enriched_status', 'not_enriched') == 'not_enriched'
                 }
 
             # Estrai dettagli clinica
@@ -84,7 +96,7 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
                     'default_fee': record.get('default_fee'),
                     'fee': record.get('fee'),
                     'doctor_id': record['doctor_id'],
-                    'responsibilities': []  # Sarà popolato dopo
+                    'responsibilities': []  # Sarà popolato dopo con i servizi
                 }
                 
                 # Aggiungi campi specifici per cliniche con slot
@@ -138,6 +150,7 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
             items.append(item)
 
         return items
+
 
     def get_specializations(self):
         """
@@ -586,6 +599,231 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
             loggerManager.logger.error(f"Error getting Google Places data for country {self.country_code}: {e}")
             self.operation_successful = False
             self.result_data = []
+
+        return self
+    # STEP 3: Aggiungi questi metodi alla classe EnhancedMedicalWorker in api/lib/worker.py
+    # IMPORTANTE: Aggiungi anche questo import all'inizio del file:
+    # from datetime import datetime
+
+    def save_enrichment_attempt(self, attempt_data):
+        """
+        Salva un tentativo di arricchimento (successo o fallimento)
+        :param attempt_data: dict con i dati del tentativo
+        :return: self
+        """
+        loggerManager.logger.debug(f"Saving enrichment attempt for country: {self.country_code}")
+        
+        try:
+            # Validazione dati essenziali
+            if not attempt_data.get('doctor_id'):
+                raise ValueError("doctor_id is required for enrichment attempt")
+            
+            if not attempt_data.get('attempt_status'):
+                raise ValueError("attempt_status is required")
+            
+            query = sql_queries.insert_enrichment_attempt_query(attempt_data, country_code=self.country_code)
+            self.execute_query(query, country_code=self.country_code)
+            
+            if self.query_result:
+                self.result_data = self.query_result
+                self.operation_successful = True
+                loggerManager.logger.info(f"Successfully saved enrichment attempt: doctor_id {attempt_data.get('doctor_id')}, status: {attempt_data.get('attempt_status')}")
+            else:
+                self.result_data = {}
+                self.operation_successful = False
+                loggerManager.logger.warning(f"Failed to save enrichment attempt: doctor_id {attempt_data.get('doctor_id')}")
+                
+        except Exception as e:
+            loggerManager.logger.error(f"Error saving enrichment attempt for country {self.country_code}: {e}")
+            self.operation_successful = False
+            self.result_data = {"error": str(e)}
+
+        return self
+
+    def get_enrichment_attempts(self, doctor_id=None, status=None, limit=None):
+        """
+        Recupera tentativi di arricchimento con filtri opzionali
+        :param doctor_id: int, ID dottore specifico (opzionale)
+        :param status: string, stato tentativo (opzionale)
+        :param limit: int, limite risultati (opzionale)
+        :return: self
+        """
+        loggerManager.logger.debug(f"Getting enrichment attempts for country: {self.country_code}")
+        
+        try:
+            query = sql_queries.get_enrichment_attempts_query(
+                doctor_id=doctor_id,
+                country_code=self.country_code,
+                status=status,
+                limit=limit
+            )
+            self.execute_query(query, country_code=self.country_code)
+            
+            if self.query_result:
+                if isinstance(self.query_result, dict):
+                    self.result_data = [self.query_result]
+                else:
+                    self.result_data = self.query_result
+                self.operation_successful = True
+            else:
+                self.result_data = []
+                self.operation_successful = False
+                
+        except Exception as e:
+            loggerManager.logger.error(f"Error getting enrichment attempts for country {self.country_code}: {e}")
+            self.operation_successful = False
+            self.result_data = []
+
+        return self
+
+    def check_doctors_enrichment_status(self, doctor_ids):
+        """
+        Controlla lo stato di arricchimento per una lista di dottori
+        :param doctor_ids: list di doctor ID
+        :return: self
+        """
+        loggerManager.logger.debug(f"Checking enrichment status for {len(doctor_ids)} doctors in country: {self.country_code}")
+        
+        try:
+            if not doctor_ids:
+                self.result_data = []
+                self.operation_successful = True
+                return self
+            
+            query = sql_queries.check_doctor_enrichment_status_query(
+                doctor_ids=doctor_ids,
+                country_code=self.country_code
+            )
+            self.execute_query(query, country_code=self.country_code)
+            
+            if self.query_result:
+                if isinstance(self.query_result, dict):
+                    self.result_data = [self.query_result]
+                else:
+                    self.result_data = self.query_result
+                self.operation_successful = True
+            else:
+                self.result_data = []
+                self.operation_successful = False
+                
+        except Exception as e:
+            loggerManager.logger.error(f"Error checking enrichment status for country {self.country_code}: {e}")
+            self.operation_successful = False
+            self.result_data = []
+
+        return self
+
+    def get_unenriched_doctors(self, limit=None, exclude_failed=False):
+        """
+        Ottieni dottori che non sono mai stati arricchiti o che necessitano di re-arricchimento
+        :param limit: int, limite risultati (opzionale)
+        :param exclude_failed: bool, escludi dottori con tentativi falliti
+        :return: self
+        """
+        loggerManager.logger.debug(f"Getting unenriched doctors for country: {self.country_code}")
+        
+        try:
+            query = sql_queries.get_unenriched_doctors_query(
+                country_code=self.country_code,
+                limit=limit,
+                exclude_failed=exclude_failed
+            )
+            self.execute_query(query, country_code=self.country_code)
+            
+            if self.query_result:
+                if isinstance(self.query_result, dict):
+                    self.result_data = [self.query_result]
+                else:
+                    self.result_data = self.query_result
+                self.operation_successful = True
+            else:
+                self.result_data = []
+                self.operation_successful = False
+                
+        except Exception as e:
+            loggerManager.logger.error(f"Error getting unenriched doctors for country {self.country_code}: {e}")
+            self.operation_successful = False
+            self.result_data = []
+
+        return self
+
+    def save_google_place_data_with_attempt(self, place_data, attempt_data=None):
+        """
+        Salva dati Google Places E traccia il tentativo di arricchimento
+        :param place_data: dict, dati da Google Places API
+        :param attempt_data: dict, dati del tentativo (opzionale, generato automaticamente)
+        :return: self
+        """
+        loggerManager.logger.debug(f"Saving Google Place data with attempt tracking for country: {self.country_code}")
+        
+        start_time = datetime.now()
+        
+        try:
+            # Validazione dati essenziali
+            if not place_data.get('doctor_id'):
+                raise ValueError("doctor_id is required")
+            
+            # Salva prima il tentativo di arricchimento
+            if not attempt_data:
+                attempt_data = {
+                    'doctor_id': place_data.get('doctor_id'),
+                    'attempt_status': 'success' if place_data.get('google_place_id') else 'no_results',
+                    'enrichment_source': 'google_places',
+                    'search_query': place_data.get('search_query'),
+                    'doctor_name': place_data.get('original_doctor', {}).get('name'),
+                    'doctor_surname': place_data.get('original_doctor', {}).get('surname'),
+                    'clinic_name': place_data.get('business_name'),
+                    'clinic_address': place_data.get('formatted_address'),
+                    'google_place_id': place_data.get('google_place_id'),
+                    'places_found': 1 if place_data.get('google_place_id') else 0,
+                    'attempted_by': place_data.get('attempted_by'),
+                    'processing_time_ms': int((datetime.now() - start_time).total_seconds() * 1000)
+                }
+            
+            # Salva il tentativo
+            attempt_worker = EnhancedMedicalWorker(country_code=self.country_code)
+            attempt_worker.save_enrichment_attempt(attempt_data)
+            
+            # Se abbiamo dati validi, salva anche i Google Places
+            google_place_result = None
+            if place_data.get('google_place_id'):
+                self.save_google_place_data(place_data)
+                google_place_result = self.result_data if self.operation_successful else None
+            
+            # Combina i risultati
+            self.result_data = {
+                'attempt_saved': attempt_worker.operation_successful,
+                'attempt_data': attempt_worker.result_data,
+                'google_place_saved': google_place_result is not None,
+                'google_place_data': google_place_result,
+                'doctor_id': place_data.get('doctor_id'),
+                'status': attempt_data.get('attempt_status')
+            }
+            self.operation_successful = attempt_worker.operation_successful
+            
+            loggerManager.logger.info(f"Completed enrichment with attempt tracking: doctor_id {place_data.get('doctor_id')}, status: {attempt_data.get('attempt_status')}")
+            
+        except Exception as e:
+            # Salva il tentativo fallito
+            try:
+                failed_attempt_data = {
+                    'doctor_id': place_data.get('doctor_id'),
+                    'attempt_status': 'error',
+                    'enrichment_source': 'google_places',
+                    'error_message': str(e),
+                    'attempted_by': place_data.get('attempted_by'),
+                    'processing_time_ms': int((datetime.now() - start_time).total_seconds() * 1000)
+                }
+                
+                attempt_worker = EnhancedMedicalWorker(country_code=self.country_code)
+                attempt_worker.save_enrichment_attempt(failed_attempt_data)
+                
+            except Exception as attempt_error:
+                loggerManager.logger.error(f"Failed to save failed attempt: {attempt_error}")
+            
+            loggerManager.logger.error(f"Error in save_google_place_data_with_attempt for country {self.country_code}: {e}")
+            self.operation_successful = False
+            self.result_data = {"error": str(e), "doctor_id": place_data.get('doctor_id')}
 
         return self
 

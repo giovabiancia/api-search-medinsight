@@ -1155,3 +1155,448 @@ def get_doctor_google_places_by_country(country, doctor_id):
         }
     
     return jsonify(output)
+
+# STEP 4: Aggiungi questi endpoint alla fine del file api/routes/enhanced_routes.py
+
+# ====================== ENRICHMENT TRACKING ENDPOINTS ======================
+
+@enhanced_bp.route('/enrichment/attempts', methods=('GET',))
+def get_enrichment_attempts():
+    """Recupera tentativi di arricchimento con filtri"""
+    request_data = util.process_request(request)
+    country = validate_country_and_connection(request_data.get('country', 'IT'))
+    
+    try:
+        doctor_id = request_data.get('doctor_id')
+        status = request_data.get('status')
+        limit = request_data.get('limit')
+        
+        if doctor_id:
+            doctor_id = int(doctor_id)
+        if limit:
+            limit = int(limit)
+        
+        # Recupera usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_enrichment_attempts(
+            doctor_id=doctor_id,
+            status=status,
+            limit=limit
+        )
+        
+        output = {
+            "items": med_worker.result_data if med_worker.result_data else [],
+            "country": country,
+            "filters": {
+                "doctor_id": doctor_id,
+                "status": status,
+                "limit": limit
+            },
+            "total": len(med_worker.result_data) if med_worker.result_data else 0
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_enrichment_attempts: {e}")
+        output = {
+            "error": "Error retrieving enrichment attempts",
+            "country": country,
+            "items": []
+        }
+    
+    return jsonify(output)
+
+
+@enhanced_bp.route('/<country>/enrichment/attempts', methods=('GET',))
+def get_enrichment_attempts_by_country(country):
+    """Recupera tentativi di arricchimento per paese specifico"""
+    country = validate_country_and_connection(country)
+    request_data = util.process_request(request)
+    
+    try:
+        doctor_id = request_data.get('doctor_id')
+        status = request_data.get('status')
+        limit = request_data.get('limit')
+        
+        if doctor_id:
+            doctor_id = int(doctor_id)
+        if limit:
+            limit = int(limit)
+        
+        # Recupera usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_enrichment_attempts(
+            doctor_id=doctor_id,
+            status=status,
+            limit=limit
+        )
+        
+        output = {
+            "items": med_worker.result_data if med_worker.result_data else [],
+            "country": country,
+            "filters": {
+                "doctor_id": doctor_id,
+                "status": status,
+                "limit": limit
+            },
+            "total": len(med_worker.result_data) if med_worker.result_data else 0
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_enrichment_attempts_by_country: {e}")
+        output = {
+            "error": "Error retrieving enrichment attempts",
+            "country": country,
+            "items": []
+        }
+    
+    return jsonify(output)
+
+
+@enhanced_bp.route('/<country>/enrichment/status/check', methods=('POST',))
+def check_enrichment_status_by_country(country):
+    """Controlla stato arricchimento per paese specifico"""
+    country = validate_country_and_connection(country)
+    
+    if not request.is_json:
+        raise error_handlers.InvalidAPIUsage(message="Content-Type must be application/json", status_code=400)
+    
+    data = request.json
+    
+    try:
+        doctor_ids = data.get('doctor_ids', [])
+        
+        if not doctor_ids or not isinstance(doctor_ids, list):
+            raise error_handlers.InvalidAPIUsage(message="doctor_ids must be a non-empty list", status_code=400)
+        
+        # Converti a interi
+        doctor_ids = [int(doc_id) for doc_id in doctor_ids]
+        
+        # Controlla stato usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.check_doctors_enrichment_status(doctor_ids)
+        
+        # Raggruppa risultati per stato
+        status_summary = {}
+        for item in med_worker.result_data or []:
+            status = item.get('enrichment_status', 'unknown')
+            if status not in status_summary:
+                status_summary[status] = []
+            status_summary[status].append(item['doctor_id'])
+        
+        output = {
+            "doctors_checked": len(doctor_ids),
+            "country": country,
+            "status_summary": status_summary,
+            "details": med_worker.result_data if med_worker.result_data else [],
+            "legend": {
+                "never_attempted": "Mai tentato arricchimento",
+                "enriched": "Arricchimento completato con successo",
+                "attempted_failed": "Tentativo fallito (può ritentare)",
+                "attempted_unknown": "Stato tentativo sconosciuto"
+            }
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in check_enrichment_status_by_country: {e}")
+        output = {
+            "error": "Error checking enrichment status",
+            "country": country,
+            "doctors_checked": 0,
+            "details": []
+        }
+    
+    return jsonify(output)
+
+@enhanced_bp.route('/enrichment/status/check', methods=('POST',))
+def check_enrichment_status():
+    """Controlla stato arricchimento per lista di dottori"""
+    if not request.is_json:
+        raise error_handlers.InvalidAPIUsage(message="Content-Type must be application/json", status_code=400)
+    
+    data = request.json
+    country = validate_country_and_connection(data.get('country', 'IT'))
+    
+    try:
+        doctor_ids = data.get('doctor_ids', [])
+        
+        if not doctor_ids or not isinstance(doctor_ids, list):
+            raise error_handlers.InvalidAPIUsage(message="doctor_ids must be a non-empty list", status_code=400)
+        
+        # Converti a interi
+        doctor_ids = [int(doc_id) for doc_id in doctor_ids]
+        
+        # Controlla stato usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.check_doctors_enrichment_status(doctor_ids)
+        
+        # Raggruppa risultati per stato
+        status_summary = {}
+        for item in med_worker.result_data or []:
+            status = item.get('enrichment_status', 'unknown')
+            if status not in status_summary:
+                status_summary[status] = []
+            status_summary[status].append(item['doctor_id'])
+        
+        output = {
+            "doctors_checked": len(doctor_ids),
+            "country": country,
+            "status_summary": status_summary,
+            "details": med_worker.result_data if med_worker.result_data else [],
+            "legend": {
+                "never_attempted": "Mai tentato arricchimento",
+                "enriched": "Arricchimento completato con successo",
+                "attempted_failed": "Tentativo fallito (può ritentare)",
+                "attempted_unknown": "Stato tentativo sconosciuto"
+            }
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in check_enrichment_status_by_country: {e}")
+        output = {
+            "error": "Error checking enrichment status",
+            "country": country,
+            "doctors_checked": 0,
+            "details": []
+        }
+    
+    return jsonify(output)
+
+
+@enhanced_bp.route('/enrichment/unenriched', methods=('GET',))
+def get_unenriched_doctors():
+    """Ottieni dottori non ancora arricchiti"""
+    request_data = util.process_request(request)
+    country = validate_country_and_connection(request_data.get('country', 'IT'))
+    
+    try:
+        limit = request_data.get('limit')
+        exclude_failed = request_data.get('exclude_failed', 'false').lower() in ['true', '1', 'yes']
+        
+        if limit:
+            limit = int(limit)
+        
+        # Recupera usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_unenriched_doctors(
+            limit=limit,
+            exclude_failed=exclude_failed
+        )
+        
+        output = {
+            "items": med_worker.result_data if med_worker.result_data else [],
+            "country": country,
+            "filters": {
+                "limit": limit,
+                "exclude_failed": exclude_failed
+            },
+            "total": len(med_worker.result_data) if med_worker.result_data else 0,
+            "message": "Dottori che non sono mai stati arricchiti o con tentativi falliti"
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_unenriched_doctors: {e}")
+        output = {
+            "error": "Error retrieving unenriched doctors",
+            "country": country,
+            "items": []
+        }
+    
+    return jsonify(output)
+
+
+@enhanced_bp.route('/<country>/enrichment/unenriched', methods=('GET',))
+def get_unenriched_doctors_by_country(country):
+    """Ottieni dottori non arricchiti per paese specifico"""
+    country = validate_country_and_connection(country)
+    request_data = util.process_request(request)
+    
+    try:
+        limit = request_data.get('limit')
+        exclude_failed = request_data.get('exclude_failed', 'false').lower() in ['true', '1', 'yes']
+        
+        if limit:
+            limit = int(limit)
+        
+        # Recupera usando il worker
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_unenriched_doctors(
+            limit=limit,
+            exclude_failed=exclude_failed
+        )
+        
+        output = {
+            "items": med_worker.result_data if med_worker.result_data else [],
+            "country": country,
+            "filters": {
+                "limit": limit,
+                "exclude_failed": exclude_failed
+            },
+            "total": len(med_worker.result_data) if med_worker.result_data else 0,
+            "message": "Dottori che non sono mai stati arricchiti o con tentativi falliti"
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_unenriched_doctors_by_country: {e}")
+        output = {
+            "error": "Error retrieving unenriched doctors",
+            "country": country,
+            "items": []
+        }
+    
+    return jsonify(output)
+
+
+@enhanced_bp.route('/enrichment/batch-attempts', methods=('POST',))
+def save_batch_enrichment_attempts():
+    """Salva tentativi di arricchimento in batch"""
+    if not request.is_json:
+        raise error_handlers.InvalidAPIUsage(message="Content-Type must be application/json", status_code=400)
+    
+    data = request.json
+    country = validate_country_and_connection(data.get('country', 'IT'))
+    
+    try:
+        attempts = data.get('attempts', [])
+        
+        if not attempts or not isinstance(attempts, list):
+            raise error_handlers.InvalidAPIUsage(message="attempts must be a non-empty list", status_code=400)
+        
+        results = []
+        successful = 0
+        failed = 0
+        
+        # Processa ogni tentativo
+        for attempt_data in attempts:
+            try:
+                med_worker = worker.EnhancedMedicalWorker(country_code=country)
+                med_worker.save_enrichment_attempt(attempt_data)
+                
+                if med_worker.operation_successful:
+                    successful += 1
+                    results.append({
+                        "doctor_id": attempt_data.get('doctor_id'),
+                        "status": "saved",
+                        "data": med_worker.result_data
+                    })
+                else:
+                    failed += 1
+                    results.append({
+                        "doctor_id": attempt_data.get('doctor_id'),
+                        "status": "failed",
+                        "error": med_worker.result_data
+                    })
+                    
+            except Exception as e:
+                failed += 1
+                results.append({
+                    "doctor_id": attempt_data.get('doctor_id'),
+                    "status": "error",
+                    "error": str(e)
+                })
+        
+        output = {
+            "success": True,
+            "message": f"Batch enrichment attempts processed",
+            "summary": {
+                "total": len(attempts),
+                "successful": successful,
+                "failed": failed,
+                "success_rate": round((successful / len(attempts)) * 100, 2) if attempts else 0
+            },
+            "results": results,
+            "country": country
+        }
+        
+        status_code = 200 if successful > 0 else 400
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in save_batch_enrichment_attempts: {e}")
+        output = {
+            "success": False,
+            "message": "Error processing batch enrichment attempts",
+            "error": str(e),
+            "country": country
+        }
+        status_code = 500
+    
+    return jsonify(output), status_code
+
+
+@enhanced_bp.route('/<country>/enrichment/batch-attempts', methods=('POST',))
+def save_batch_enrichment_attempts_by_country(country):
+    """Salva tentativi batch per paese specifico"""
+    country = validate_country_and_connection(country)
+    
+    if not request.is_json:
+        raise error_handlers.InvalidAPIUsage(message="Content-Type must be application/json", status_code=400)
+    
+    data = request.json
+    
+    try:
+        attempts = data.get('attempts', [])
+        
+        if not attempts or not isinstance(attempts, list):
+            raise error_handlers.InvalidAPIUsage(message="attempts must be a non-empty list", status_code=400)
+        
+        results = []
+        successful = 0
+        failed = 0
+        
+        # Processa ogni tentativo
+        for attempt_data in attempts:
+            try:
+                med_worker = worker.EnhancedMedicalWorker(country_code=country)
+                med_worker.save_enrichment_attempt(attempt_data)
+                
+                if med_worker.operation_successful:
+                    successful += 1
+                    results.append({
+                        "doctor_id": attempt_data.get('doctor_id'),
+                        "status": "saved",
+                        "data": med_worker.result_data
+                    })
+                else:
+                    failed += 1
+                    results.append({
+                        "doctor_id": attempt_data.get('doctor_id'),
+                        "status": "failed",
+                        "error": med_worker.result_data
+                    })
+                    
+            except Exception as e:
+                failed += 1
+                results.append({
+                    "doctor_id": attempt_data.get('doctor_id'),
+                    "status": "error",
+                    "error": str(e)
+                })
+        
+        output = {
+            "success": True,
+            "message": f"Batch enrichment attempts processed",
+            "summary": {
+                "total": len(attempts),
+                "successful": successful,
+                "failed": failed,
+                "success_rate": round((successful / len(attempts)) * 100, 2) if attempts else 0
+            },
+            "results": results,
+            "country": country
+        }
+        
+        status_code = 200 if successful > 0 else 400
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in save_batch_enrichment_attempts_by_country: {e}")
+        output = {
+            "success": False,
+            "message": "Error processing batch enrichment attempts",
+            "error": str(e),
+            "country": country
+        }
+        status_code = 500
+    
+    return jsonify(output), status_code
+       
+
+

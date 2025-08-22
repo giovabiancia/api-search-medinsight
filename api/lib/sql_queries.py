@@ -16,7 +16,7 @@ from api.lib import loggerManager
 
 def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='IT'):
     """
-    Get doctors query for specific country database with services
+    Get doctors query for specific country database with services and enrichment status
     :param doctor_id: int doctor id
     :param city: string city name
     :param profession: string, profession
@@ -25,7 +25,7 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
     """
     
     if doctor_id:
-        # Retrieve doctor's complete information by ID including services
+        # Retrieve doctor's complete information by ID including services and enrichment status
         query = f"""
                 SELECT 
                     -- Doctor details
@@ -39,7 +39,18 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count,
                     -- Service details
                     so.service_id, so.option_name as service_name, so.description as service_description,
-                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service,
+                    -- Google Places enrichment status
+                    CASE 
+                        WHEN gpd.google_place_id IS NOT NULL THEN 'enriched'
+                        ELSE 'not_enriched'
+                    END as enriched_status,
+                    gpd.google_place_id,
+                    gpd.enriched_at,
+                    gpd.updated_at as last_enrichment_update,
+                    gpd.business_name as google_business_name,
+                    gpd.rating as google_rating,
+                    gpd.reviews_count as google_reviews_count
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
@@ -47,12 +58,13 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
                 LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+                LEFT JOIN doctors.google_places_data gpd ON d.doctor_id = gpd.doctor_id
                 WHERE d.doctor_id = {doctor_id}
                 ORDER BY d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 """
 
     elif city and profession:
-        # Retrieve practitioners from the city with specific profession including services
+        # Retrieve practitioners from the city with specific profession including services and enrichment status
         profession = profession.upper()
         city = city.upper()
         query = f"""
@@ -68,7 +80,18 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count,
                     -- Service details
                     so.service_id, so.option_name as service_name, so.description as service_description,
-                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service,
+                    -- Google Places enrichment status
+                    CASE 
+                        WHEN gpd.google_place_id IS NOT NULL THEN 'enriched'
+                        ELSE 'not_enriched'
+                    END as enriched_status,
+                    gpd.google_place_id,
+                    gpd.enriched_at,
+                    gpd.updated_at as last_enrichment_update,
+                    gpd.business_name as google_business_name,
+                    gpd.rating as google_rating,
+                    gpd.reviews_count as google_reviews_count
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
@@ -76,12 +99,13 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
                 LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+                LEFT JOIN doctors.google_places_data gpd ON d.doctor_id = gpd.doctor_id
                 WHERE UPPER(c.city_name) = '{city}' AND UPPER(s.specialization_name) = '{profession}'
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 """
 
     elif profession:
-        # Retrieve all practitioners matching the profession including services
+        # Retrieve all practitioners matching the profession including services and enrichment status
         profession = profession.upper()
         query = f"""
                 SELECT 
@@ -96,7 +120,18 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count,
                     -- Service details
                     so.service_id, so.option_name as service_name, so.description as service_description,
-                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service,
+                    -- Google Places enrichment status
+                    CASE 
+                        WHEN gpd.google_place_id IS NOT NULL THEN 'enriched'
+                        ELSE 'not_enriched'
+                    END as enriched_status,
+                    gpd.google_place_id,
+                    gpd.enriched_at,
+                    gpd.updated_at as last_enrichment_update,
+                    gpd.business_name as google_business_name,
+                    gpd.rating as google_rating,
+                    gpd.reviews_count as google_reviews_count
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
@@ -104,12 +139,13 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
                 LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+                LEFT JOIN doctors.google_places_data gpd ON d.doctor_id = gpd.doctor_id
                 WHERE UPPER(s.specialization_name) = '{profession}'
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 """
 
     elif city:
-        # Retrieve all practitioners from the specified city including services
+        # Retrieve all practitioners from the specified city including services and enrichment status
         city = city.upper()
         query = f"""
                 SELECT 
@@ -124,7 +160,18 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count,
                     -- Service details
                     so.service_id, so.option_name as service_name, so.description as service_description,
-                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service,
+                    -- Google Places enrichment status
+                    CASE 
+                        WHEN gpd.google_place_id IS NOT NULL THEN 'enriched'
+                        ELSE 'not_enriched'
+                    END as enriched_status,
+                    gpd.google_place_id,
+                    gpd.enriched_at,
+                    gpd.updated_at as last_enrichment_update,
+                    gpd.business_name as google_business_name,
+                    gpd.rating as google_rating,
+                    gpd.reviews_count as google_reviews_count
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
@@ -132,11 +179,12 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
                 LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+                LEFT JOIN doctors.google_places_data gpd ON d.doctor_id = gpd.doctor_id
                 WHERE UPPER(c.city_name) = '{city}'
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 """
     else:
-        # Demo: Retrieve only few practitioners for demo including services
+        # Demo: Retrieve only few practitioners for demo including services and enrichment status
         query = f"""
                 SELECT 
                     -- Doctor details
@@ -150,7 +198,18 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                     s.specialization_name, s.name_plural, s.is_popular, 1 as count,
                     -- Service details
                     so.service_id, so.option_name as service_name, so.description as service_description,
-                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
+                    csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service,
+                    -- Google Places enrichment status
+                    CASE 
+                        WHEN gpd.google_place_id IS NOT NULL THEN 'enriched'
+                        ELSE 'not_enriched'
+                    END as enriched_status,
+                    gpd.google_place_id,
+                    gpd.enriched_at,
+                    gpd.updated_at as last_enrichment_update,
+                    gpd.business_name as google_business_name,
+                    gpd.rating as google_rating,
+                    gpd.reviews_count as google_reviews_count
                 FROM doctors.doctors d
                 LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
                 LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
@@ -158,6 +217,7 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
                 LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
                 LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
                 LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+                LEFT JOIN doctors.google_places_data gpd ON d.doctor_id = gpd.doctor_id
                 ORDER BY d.rate DESC, d.doctor_id, c.clinic_id, s.specialization_name, csom.is_default DESC, so.option_name
                 LIMIT 50
                 """
@@ -170,7 +230,7 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
                                  min_rate=None, max_rate=None, has_slots=None, 
                                  allow_questions=None, limit=None, country_code='IT'):
     """
-    Advanced search for doctors with multiple filters including services
+    Advanced search for doctors with multiple filters including services and enrichment status
     :param search_term: string, search in doctor name
     :param city: string, city name
     :param profession: string, profession/specialization
@@ -196,7 +256,18 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
                 s.specialization_name, s.name_plural, s.is_popular, 1 as count,
                 -- Service details
                 so.service_id, so.option_name as service_name, so.description as service_description,
-                csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
+                csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service,
+                -- Google Places enrichment status
+                CASE 
+                    WHEN gpd.google_place_id IS NOT NULL THEN 'enriched'
+                    ELSE 'not_enriched'
+                END as enriched_status,
+                gpd.google_place_id,
+                gpd.enriched_at,
+                gpd.updated_at as last_enrichment_update,
+                gpd.business_name as google_business_name,
+                gpd.rating as google_rating,
+                gpd.reviews_count as google_reviews_count
             FROM doctors.doctors d
             LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
             LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
@@ -204,6 +275,7 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
             LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
             LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
             LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+            LEFT JOIN doctors.google_places_data gpd ON d.doctor_id = gpd.doctor_id
             WHERE 1=1
             """
     
@@ -248,7 +320,7 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
 
 def get_doctors_with_slots_query(city=None, profession=None, country_code='IT'):
     """
-    Get doctors with available slots including services
+    Get doctors with available slots including services and enrichment status
     :param city: string, city name (optional)
     :param profession: string, profession/specialization (optional)
     :param country_code: string, country code (DE, IT)
@@ -267,7 +339,18 @@ def get_doctors_with_slots_query(city=None, profession=None, country_code='IT'):
                 s.specialization_name, s.name_plural, s.is_popular, 1 as count,
                 -- Service details
                 so.service_id, so.option_name as service_name, so.description as service_description,
-                csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service
+                csom.service_price, csom.service_price_decimal, csom.is_price_from, csom.is_default as is_default_service,
+                -- Google Places enrichment status
+                CASE 
+                    WHEN gpd.google_place_id IS NOT NULL THEN 'enriched'
+                    ELSE 'not_enriched'
+                END as enriched_status,
+                gpd.google_place_id,
+                gpd.enriched_at,
+                gpd.updated_at as last_enrichment_update,
+                gpd.business_name as google_business_name,
+                gpd.rating as google_rating,
+                gpd.reviews_count as google_reviews_count
             FROM doctors.doctors d
             LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
             LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
@@ -275,6 +358,7 @@ def get_doctors_with_slots_query(city=None, profession=None, country_code='IT'):
             LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
             LEFT JOIN doctors.clinics_service_options_map csom ON (c.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
             LEFT JOIN doctors.service_options so ON csom.service_id = so.service_id
+            LEFT JOIN doctors.google_places_data gpd ON d.doctor_id = gpd.doctor_id
             WHERE (d.has_slots = true OR c.has_slots = true)
             """
     
@@ -295,7 +379,6 @@ def get_doctors_with_slots_query(city=None, profession=None, country_code='IT'):
     
     loggerManager.logger.info(f"Doctors with slots query for country {country_code}: {base_query}")
     return base_query
-
 
 # Keep all other existing functions unchanged...
 def get_specializations_query(country_code='IT'):
@@ -708,4 +791,254 @@ def get_google_places_data_query(google_place_id=None, doctor_id=None, country_c
         base_query += f" LIMIT {limit}"
     
     loggerManager.logger.info(f"Get Google Places query for country {country_code}, doctor_id: {doctor_id}")
+    return base_query
+
+
+# STEP 2: Aggiungi queste funzioni alla fine del file api/lib/sql_queries.py
+
+# CORREGGI la funzione insert_enrichment_attempt_query in api/lib/sql_queries.py
+# Il problema è che escape_sql non viene chiamato correttamente per attempted_by
+
+def insert_enrichment_attempt_query(attempt_data, country_code='IT'):
+    """
+    Insert enrichment attempt record
+    :param attempt_data: dict with attempt information
+    :param country_code: string, country code (DE, IT)
+    :return: SQL query string
+    """
+    
+    # Escape single quotes for SQL safety
+    def escape_sql(value):
+        if value is None:
+            return 'NULL'
+        if isinstance(value, str):
+            escaped = value.replace("'", "''")
+            return f"'{escaped}'"
+        if isinstance(value, (dict, list)):
+            import json
+            json_str = json.dumps(value)
+            escaped = json_str.replace("'", "''")
+            return f"'{escaped}'"
+        return str(value)
+    
+    # CORREZIONE: Usa escape_sql anche per attempted_by
+    attempted_by = attempt_data.get('attempted_by')
+    if attempted_by is not None:
+        attempted_by_sql = escape_sql(attempted_by)  # <-- QUESTO ERA IL PROBLEMA
+    else:
+        attempted_by_sql = 'NULL'
+
+    query = f"""
+            INSERT INTO doctors.enrichment_attempts (
+                doctor_id,
+                country_code,
+                attempt_status,
+                enrichment_source,
+                search_query,
+                doctor_name,
+                doctor_surname,
+                clinic_name,
+                clinic_address,
+                google_place_id,
+                places_found,
+                error_message,
+                attempted_by,
+                processing_time_ms
+            ) VALUES (
+                {attempt_data.get('doctor_id')},
+                {escape_sql(country_code)},
+                {escape_sql(attempt_data.get('attempt_status', 'attempted'))},
+                {escape_sql(attempt_data.get('enrichment_source', 'google_places'))},
+                {escape_sql(attempt_data.get('search_query'))},
+                {escape_sql(attempt_data.get('doctor_name'))},
+                {escape_sql(attempt_data.get('doctor_surname'))},
+                {escape_sql(attempt_data.get('clinic_name'))},
+                {escape_sql(attempt_data.get('clinic_address'))},
+                {escape_sql(attempt_data.get('google_place_id'))},
+                {attempt_data.get('places_found', 0)},
+                {escape_sql(attempt_data.get('error_message'))},
+                {attempted_by_sql},
+                {attempt_data.get('processing_time_ms') or 'NULL'}
+            )
+            ON CONFLICT (doctor_id, country_code, enrichment_source) 
+            DO UPDATE SET 
+                attempt_status = EXCLUDED.attempt_status,
+                search_query = EXCLUDED.search_query,
+                google_place_id = EXCLUDED.google_place_id,
+                places_found = EXCLUDED.places_found,
+                error_message = EXCLUDED.error_message,
+                attempted_by = EXCLUDED.attempted_by,
+                attempted_at = NOW(),
+                processing_time_ms = EXCLUDED.processing_time_ms
+            RETURNING id, doctor_id, attempt_status;
+            """
+    
+    loggerManager.logger.info(f"Insert enrichment attempt for doctor_id: {attempt_data.get('doctor_id')}, country: {country_code}")
+    return query
+
+def get_enrichment_attempts_query(doctor_id=None, country_code='IT', status=None, limit=None):
+    """
+    Get enrichment attempts with optional filters
+    :param doctor_id: int, specific doctor ID (optional)
+    :param country_code: string, country code (DE, IT)
+    :param status: string, attempt status filter (optional)
+    :param limit: int, limit results (optional)
+    :return: SQL query string
+    """
+    
+    base_query = """
+            SELECT 
+                ea.id,
+                ea.doctor_id,
+                ea.country_code,
+                ea.attempt_status,
+                ea.enrichment_source,
+                ea.search_query,
+                ea.doctor_name,
+                ea.doctor_surname,
+                ea.clinic_name,
+                ea.clinic_address,
+                ea.google_place_id,
+                ea.places_found,
+                ea.error_message,
+                ea.attempted_by,
+                ea.attempted_at,
+                ea.processing_time_ms,
+                d.full_name as current_doctor_name,
+                d.rate as doctor_rate,
+                -- Check if Google Place data exists
+                CASE 
+                    WHEN gpd.id IS NOT NULL THEN true 
+                    ELSE false 
+                END as has_google_place_data
+            FROM doctors.enrichment_attempts ea
+            INNER JOIN doctors.doctors d ON ea.doctor_id = d.doctor_id
+            LEFT JOIN doctors.google_places_data gpd ON (ea.doctor_id = gpd.doctor_id AND ea.country_code = gpd.country_code)
+            WHERE ea.country_code = '{}'
+            """.format(country_code)
+    
+    conditions = []
+    
+    if doctor_id:
+        conditions.append(f"ea.doctor_id = {doctor_id}")
+    
+    if status:
+        conditions.append(f"ea.attempt_status = '{status}'")
+    
+    if conditions:
+        base_query += " AND " + " AND ".join(conditions)
+    
+    base_query += " ORDER BY ea.attempted_at DESC"
+    
+    if limit:
+        base_query += f" LIMIT {limit}"
+    
+    loggerManager.logger.info(f"Get enrichment attempts query for country {country_code}, doctor_id: {doctor_id}")
+    return base_query
+
+
+def check_doctor_enrichment_status_query(doctor_ids, country_code='IT'):
+    """
+    Check enrichment status for multiple doctors
+    :param doctor_ids: list of doctor IDs
+    :param country_code: string, country code (DE, IT)
+    :return: SQL query string
+    """
+    
+    if not doctor_ids:
+        return None
+    
+    doctor_ids_str = ','.join(map(str, doctor_ids))
+    
+    query = f"""
+            SELECT 
+                d.doctor_id,
+                d.full_name,
+                ea.attempt_status,
+                ea.attempted_at,
+                ea.enrichment_source,
+                ea.places_found,
+                ea.google_place_id,
+                CASE 
+                    WHEN ea.id IS NULL THEN 'never_attempted'
+                    WHEN ea.attempt_status = 'success' THEN 'enriched'
+                    WHEN ea.attempt_status IN ('failed', 'no_results', 'error') THEN 'attempted_failed'
+                    ELSE 'attempted_unknown'
+                END as enrichment_status,
+                CASE 
+                    WHEN gpd.id IS NOT NULL THEN true 
+                    ELSE false 
+                END as has_saved_data
+            FROM doctors.doctors d
+            LEFT JOIN doctors.enrichment_attempts ea ON (
+                d.doctor_id = ea.doctor_id 
+                AND ea.country_code = '{country_code}'
+                AND ea.enrichment_source = 'google_places'
+            )
+            LEFT JOIN doctors.google_places_data gpd ON (
+                d.doctor_id = gpd.doctor_id 
+                AND gpd.country_code = '{country_code}'
+            )
+            WHERE d.doctor_id IN ({doctor_ids_str})
+            ORDER BY d.doctor_id
+            """
+    
+    loggerManager.logger.info(f"Check enrichment status for {len(doctor_ids)} doctors in country {country_code}")
+    return query
+
+
+def get_unenriched_doctors_query(country_code='IT', limit=None, exclude_failed=False):
+    """
+    Get doctors that have never been enriched or need re-enrichment
+    :param country_code: string, country code (DE, IT)
+    :param limit: int, limit results (optional)
+    :param exclude_failed: bool, exclude doctors with failed attempts
+    :return: SQL query string
+    """
+    
+    exclude_condition = ""
+    if exclude_failed:
+        exclude_condition = "AND ea.attempt_status NOT IN ('no_results', 'failed')"
+    
+    base_query = f"""
+            SELECT 
+                d.doctor_id,
+                d.full_name,
+                d.given_name,
+                d.surname,
+                c.clinic_name,
+                c.street,
+                c.city_name,
+                c.post_code,
+                CASE 
+                    WHEN ea.id IS NULL THEN 'never_attempted'
+                    ELSE ea.attempt_status
+                END as enrichment_status,
+                ea.attempted_at
+            FROM doctors.doctors d
+            LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+            LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+            LEFT JOIN doctors.enrichment_attempts ea ON (
+                d.doctor_id = ea.doctor_id 
+                AND ea.country_code = '{country_code}'
+                AND ea.enrichment_source = 'google_places'
+            )
+            WHERE (
+                ea.id IS NULL  -- Mai tentato
+                OR ea.attempt_status IN ('failed', 'error')  -- Fallito, può ritentare
+                {exclude_condition}
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM doctors.google_places_data gpd 
+                WHERE gpd.doctor_id = d.doctor_id 
+                AND gpd.country_code = '{country_code}'
+            )
+            """
+    
+    base_query += " ORDER BY d.doctor_id"
+    
+    if limit:
+        base_query += f" LIMIT {limit}"
+    
+    loggerManager.logger.info(f"Get unenriched doctors query for country {country_code}")
     return base_query
