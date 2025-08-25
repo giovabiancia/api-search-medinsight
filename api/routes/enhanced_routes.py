@@ -1599,4 +1599,89 @@ def save_batch_enrichment_attempts_by_country(country):
     return jsonify(output), status_code
        
 
+@enhanced_bp.route('/doctors/<int:doctor_id>/complete', methods=('GET',))
+def get_complete_doctor_profile(doctor_id):
+    """Ottieni profilo completo di un dottore con TUTTI i dati disponibili"""
+    request_data = util.process_request(request)
+    country = validate_country_and_connection(request_data.get('country', 'IT'))
+    
+    try:
+        # Usa il worker per ottenere il profilo completo
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_complete_doctor_profile(doctor_id)
+        
+        if med_worker.operation_successful and med_worker.result_data:
+            output = {
+                "success": True,
+                "doctor_id": doctor_id,
+                "country": country,
+                "profile": med_worker.result_data
+            }
+            status_code = 200
+        else:
+            output = {
+                "success": False,
+                "message": f"Doctor {doctor_id} not found or no data available",
+                "doctor_id": doctor_id,
+                "country": country,
+                "profile": None
+            }
+            status_code = 404
+            
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_complete_doctor_profile: {e}")
+        output = {
+            "success": False,
+            "message": "Error retrieving complete doctor profile",
+            "error": str(e),
+            "doctor_id": doctor_id,
+            "country": country,
+            "profile": None
+        }
+        status_code = 500
+    
+    return jsonify(output), status_code
+
+
+@enhanced_bp.route('/<country>/doctors/<int:doctor_id>/complete', methods=('GET',))
+def get_complete_doctor_profile_by_country(country, doctor_id):
+    """Ottieni profilo completo di un dottore per paese specifico"""
+    country = validate_country_and_connection(country)
+    
+    try:
+        # Usa il worker per ottenere il profilo completo
+        med_worker = worker.EnhancedMedicalWorker(country_code=country)
+        med_worker.get_complete_doctor_profile(doctor_id)
+        
+        if med_worker.operation_successful and med_worker.result_data:
+            output = {
+                "success": True,
+                "doctor_id": doctor_id,
+                "country": country,
+                "profile": med_worker.result_data
+            }
+            status_code = 200
+        else:
+            output = {
+                "success": False,
+                "message": f"Doctor {doctor_id} not found or no data available",
+                "doctor_id": doctor_id,
+                "country": country,
+                "profile": None
+            }
+            status_code = 404
+            
+    except Exception as e:
+        loggerManager.logger.error(f"Error in get_complete_doctor_profile_by_country: {e}")
+        output = {
+            "success": False,
+            "message": "Error retrieving complete doctor profile",
+            "error": str(e),
+            "doctor_id": doctor_id,
+            "country": country,
+            "profile": None
+        }
+        status_code = 500
+    
+    return jsonify(output), status_code
 

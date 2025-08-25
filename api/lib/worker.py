@@ -831,6 +831,255 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
             self.result_data = {"error": str(e), "doctor_id": place_data.get('doctor_id')}
 
         return self
+    def get_complete_doctor_profile(self, doctor_id):
+        """
+        Ottieni profilo completo del dottore con TUTTI i dati disponibili
+        :param doctor_id: int, ID del dottore
+        :return: self
+        """
+        loggerManager.logger.debug(f"Getting complete profile for doctor {doctor_id} in country: {self.country_code}")
+        
+        try:
+            # Ottieni tutte le query
+            queries = sql_queries.get_complete_doctor_profile_query(doctor_id, country_code=self.country_code)
+            
+            # Esegui ogni query e raccogli i risultati
+            complete_data = {}
+            
+            for section_name, query in queries.items():
+                try:
+                    self.execute_query(query, country_code=self.country_code)
+                    
+                    if self.query_result:
+                        if isinstance(self.query_result, list):
+                            complete_data[section_name] = self.query_result
+                        else:
+                            complete_data[section_name] = [self.query_result]
+                    else:
+                        complete_data[section_name] = []
+                        
+                    loggerManager.logger.debug(f"Section {section_name}: {len(complete_data[section_name])} records")
+                    
+                except Exception as e:
+                    loggerManager.logger.error(f"Error executing query for section {section_name}: {e}")
+                    complete_data[section_name] = []
+            
+            # Verifica che il dottore esista
+            if not complete_data.get('doctor_base'):
+                self.result_data = None
+                self.operation_successful = False
+                loggerManager.logger.warning(f"Doctor {doctor_id} not found in country {self.country_code}")
+                return self
+            
+            # Organizza i dati in una struttura logica
+            organized_data = self._organize_complete_doctor_data(complete_data, doctor_id)
+            
+            self.result_data = organized_data
+            self.operation_successful = True
+            loggerManager.logger.info(f"Successfully retrieved complete profile for doctor {doctor_id}")
+            
+        except Exception as e:
+            loggerManager.logger.error(f"Error getting complete doctor profile for doctor {doctor_id} in country {self.country_code}: {e}")
+            self.operation_successful = False
+            self.result_data = None
+
+        return self
+
+    def _organize_complete_doctor_data(self, data_sections, doctor_id):
+        """
+        Organizza i dati del dottore in una struttura logica e ben organizzata
+        :param data_sections: dict con tutti i dati dalle query
+        :param doctor_id: int, ID del dottore
+        :return: dizionario organizzato
+        """
+        
+        # Dati base del dottore
+        doctor_base = data_sections['doctor_base'][0] if data_sections['doctor_base'] else {}
+        
+        # Organizza cliniche con i loro servizi e telefoni
+        clinics_data = []
+        for clinic in data_sections['clinics']:
+            clinic_id = clinic['clinic_id']
+            
+            # Servizi per questa clinica
+            clinic_services = [
+                service for service in data_sections['services'] 
+                if service['clinic_id'] == clinic_id
+            ]
+            
+            # Telefoni per questa clinica
+            clinic_phones = [
+                {
+                    'telephone_id': phone['telephone_id'],
+                    'phone_number': phone['phone_number'],
+                    'phone_created': phone['phone_created'],
+                    'phone_modified': phone['phone_modified']
+                }
+                for phone in data_sections['phone_numbers'] 
+                if phone['clinic_id'] == clinic_id
+            ]
+            
+            # Componi dati clinica completi
+            clinic_data = dict(clinic)
+            clinic_data['services'] = clinic_services
+            clinic_data['phone_numbers'] = clinic_phones
+            clinic_data['total_services'] = len(clinic_services)
+            clinic_data['total_phones'] = len(clinic_phones)
+            
+            clinics_data.append(clinic_data)
+        
+        # Calcola alcuni totali e statistiche
+        total_services = len(data_sections['services'])
+        total_opinions = len(data_sections['opinions'])
+        total_phone_numbers = len(data_sections['phone_numbers'])
+        
+        # Calcola rating medio dalle opinioni
+        opinions_with_rating = [op for op in data_sections['opinions'] if op.get('opinion_rate')]
+        avg_opinion_rating = None
+        if opinions_with_rating:
+            total_rating = sum(op['opinion_rate'] for op in opinions_with_rating)
+            avg_opinion_rating = round(total_rating / len(opinions_with_rating), 2)
+        
+        # Determina stato arricchimento
+        enrichment_status = 'never_attempted'
+        if data_sections['google_places']:
+            enrichment_status = 'enriched'
+        elif data_sections['enrichment_attempts']:
+            last_attempt = data_sections['enrichment_attempts'][0]  # Ordinato per data DESC
+            if last_attempt['attempt_status'] == 'success':
+                enrichment_status = 'enriched'
+            elif last_attempt['attempt_status'] in ['failed', 'error', 'no_results']:
+                enrichment_status = 'attempted_failed'
+            else:
+                enrichment_status = 'attempted'
+        
+        # Struttura finale organizzata
+        organized_profile = {
+            # Informazioni base
+            'doctor_id': doctor_id,
+            'profile_retrieved_at': datetime.now().isoformat(),
+            'country_code': self.country_code,
+            
+            # Dati personali del dottore
+            'personal_info': {
+                'internal_id': doctor_base.get('internal_id'),
+                'salutation': doctor_base.get('salutation'),
+                'given_name': doctor_base.get('given_name'),
+                'surname': doctor_base.get('surname'),
+                'full_name': doctor_base.get('full_name'),
+                'gender': doctor_base.get('gender'),
+                'doctor_url': doctor_base.get('doctor_url'),
+                'import_date': doctor_base.get('import_date'),
+                'created': doctor_base.get('doctor_created'),
+                'modified': doctor_base.get('doctor_modified')
+            },
+            
+            # Valutazioni e disponibilità
+            'ratings_and_availability': {
+                'rate': doctor_base.get('rate'),
+                'doctor_has_slots': doctor_base.get('doctor_has_slots'),
+                'allow_questions': doctor_base.get('allow_questions'),
+                'branding': doctor_base.get('branding'),
+                'avg_opinion_rating': avg_opinion_rating,
+                'total_opinions_count': total_opinions
+            },
+            
+            # Specializzazioni
+            'specializations': {
+                'items': data_sections['specializations'],
+                'total': len(data_sections['specializations']),
+                'popular_specializations': [
+                    spec for spec in data_sections['specializations'] 
+                    if spec.get('is_popular')
+                ]
+            },
+            
+            # Cliniche con servizi e telefoni
+            'clinics': {
+                'items': clinics_data,
+                'total': len(clinics_data),
+                'total_services_across_clinics': total_services,
+                'total_phone_numbers': total_phone_numbers
+            },
+            
+            # Opinioni e recensioni
+            'opinions': {
+                'items': data_sections['opinions'],
+                'total': total_opinions,
+                'statistics': data_sections['opinion_stats'][0] if data_sections['opinion_stats'] else None,
+                'average_rating': avg_opinion_rating
+            },
+            
+            # Dati Google Places
+            'google_places': {
+                'items': data_sections['google_places'],
+                'total': len(data_sections['google_places']),
+                'has_google_data': len(data_sections['google_places']) > 0
+            },
+            
+            # Storico arricchimento
+            'enrichment_history': {
+                'status': enrichment_status,
+                'attempts': data_sections['enrichment_attempts'],
+                'total_attempts': len(data_sections['enrichment_attempts']),
+                'last_attempt': data_sections['enrichment_attempts'][0] if data_sections['enrichment_attempts'] else None
+            },
+            
+            # Sommario generale
+            'summary': {
+                'total_clinics': len(clinics_data),
+                'total_specializations': len(data_sections['specializations']),
+                'total_services': total_services,
+                'total_opinions': total_opinions,
+                'total_phone_numbers': total_phone_numbers,
+                'has_google_places_data': len(data_sections['google_places']) > 0,
+                'enrichment_status': enrichment_status,
+                'profile_completeness': self._calculate_profile_completeness(doctor_base, data_sections)
+            }
+        }
+        
+        return organized_profile
+
+    def _calculate_profile_completeness(self, doctor_base, data_sections):
+        """
+        Calcola una percentuale di completezza del profilo
+        :param doctor_base: dati base del dottore
+        :param data_sections: tutte le sezioni dati
+        :return: percentuale di completezza (0-100)
+        """
+        score = 0
+        max_score = 100
+        
+        # Dati base (30 punti)
+        if doctor_base.get('full_name'): score += 5
+        if doctor_base.get('gender'): score += 5
+        if doctor_base.get('rate'): score += 10
+        if doctor_base.get('doctor_url'): score += 5
+        if doctor_base.get('salutation'): score += 5
+        
+        # Specializzazioni (15 punti)
+        if data_sections['specializations']: 
+            score += 15
+        
+        # Cliniche (20 punti)
+        if data_sections['clinics']: 
+            score += 10
+            # Bonus per cliniche con dati completi
+            complete_clinics = sum(1 for c in data_sections['clinics'] 
+                                if c.get('latitude') and c.get('longitude') and c.get('street'))
+            if complete_clinics > 0:
+                score += 10
+        
+        # Servizi (10 punti)
+        if data_sections['services']: score += 10
+        
+        # Opinioni (15 punti)
+        if data_sections['opinions']: score += 15
+        
+        # Google Places (10 punti)
+        if data_sections['google_places']: score += 10
+        
+        return min(score, max_score)
 
 
 # Manteniamo la classe originale per backward compatibility

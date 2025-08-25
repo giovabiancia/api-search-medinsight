@@ -1156,3 +1156,224 @@ def get_unenriched_doctors_query(country_code='IT', limit=None, exclude_failed=F
     
     loggerManager.logger.info(f"Get unenriched doctors query for country {country_code}")
     return base_query
+
+
+def get_complete_doctor_profile_query(doctor_id, country_code='IT'):
+    """
+    Ottieni TUTTI i dati disponibili per un dottore specifico con query separate e semplici
+    :param doctor_id: int, ID del dottore
+    :param country_code: string, codice paese (DE, IT)
+    :return: dict con tutte le query necessarie
+    """
+    
+    queries = {
+        # 1. Dati base del dottore
+        'doctor_base': f"""
+            SELECT 
+                d.id as internal_id,
+                d.doctor_id,
+                d.salutation,
+                d.given_name,
+                d.surname,
+                d.full_name,
+                d.gender,
+                d.rate,
+                d.branding,
+                d.has_slots as doctor_has_slots,
+                d.allow_questions,
+                d.url as doctor_url,
+                d.import_date,
+                d.created as doctor_created,
+                d.modified as doctor_modified
+            FROM doctors.doctors d
+            WHERE d.doctor_id = {doctor_id}
+        """,
+        
+        # 2. Tutte le cliniche del dottore
+        'clinics': f"""
+            SELECT 
+                c.id as clinic_internal_id,
+                c.clinic_id,
+                c.clinic_name,
+                c.province,
+                c.street,
+                c.district_name,
+                c.post_code,
+                c.city_name,
+                c.facility_id,
+                c.latitude,
+                c.longitude,
+                c.calendar_active,
+                c.calendar_guid,
+                c.has_slots as clinic_has_slots,
+                c.nearest_slot_date,
+                c.online_payment,
+                c.fee,
+                c.default_fee,
+                c.non_doctor,
+                c.is_commercial_from_deal,
+                c.is_commercial_from_saas,
+                c.booking_extra_fields,
+                c.created as clinic_created,
+                c.modified as clinic_modified,
+                dcm.created as mapping_created
+            FROM doctors.doctors d
+            JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+            JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+            WHERE d.doctor_id = {doctor_id}
+            ORDER BY c.clinic_id
+        """,
+        
+        # 3. Tutte le specializzazioni del dottore
+        'specializations': f"""
+            SELECT 
+                s.id as spec_internal_id,
+                s.specialization_id,
+                s.specialization_name,
+                s.name_plural,
+                s.name_female,
+                s.is_popular,
+                s.created as spec_created,
+                s.modified as spec_modified,
+                dsm.created as spec_mapping_created
+            FROM doctors.doctors d
+            JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
+            JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
+            WHERE d.doctor_id = {doctor_id}
+            ORDER BY s.is_popular DESC, s.specialization_name
+        """,
+        
+        # 4. Tutti i servizi del dottore (per clinica)
+        'services': f"""
+            SELECT 
+                csom.id as service_mapping_id,
+                csom.clinic_id,
+                csom.service_price,
+                csom.service_price_decimal,
+                csom.is_price_from,
+                csom.is_default as is_default_service,
+                csom.import_date as service_import_date,
+                csom.created as service_mapping_created,
+                csom.modified as service_mapping_modified,
+                so.id as service_internal_id,
+                so.service_id,
+                so.option_name as service_name,
+                so.description as service_description,
+                so.created as service_created,
+                so.modified as service_modified
+            FROM doctors.doctors d
+            JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+            JOIN doctors.clinics_service_options_map csom ON (dcm.clinic_id = csom.clinic_id AND d.doctor_id = csom.doctor_id)
+            JOIN doctors.service_options so ON csom.service_id = so.service_id
+            WHERE d.doctor_id = {doctor_id}
+            ORDER BY csom.clinic_id, csom.is_default DESC, so.option_name
+        """,
+        
+        # 5. Tutte le opinioni/recensioni del dottore
+        'opinions': f"""
+            SELECT 
+                o.id as opinion_internal_id,
+                o.opinion_id,
+                o.rate as opinion_rate,
+                o.is_anonymous,
+                o.photo_url,
+                o.client_message,
+                o.doctor_response,
+                o.created_at as opinion_created_at,
+                o.created as opinion_created,
+                o.modified as opinion_modified
+            FROM doctors.opinions o
+            WHERE o.doctor_id = {doctor_id}
+            ORDER BY o.created DESC
+        """,
+        
+        # 6. Statistiche delle opinioni
+        'opinion_stats': f"""
+            SELECT 
+                os.id as stats_internal_id,
+                os.positive,
+                os.neutral,
+                os.negative,
+                os.total,
+                CASE 
+                    WHEN os.total > 0 THEN ROUND((os.positive::DECIMAL / os.total * 100), 2)
+                    ELSE 0 
+                END as positive_percentage,
+                os.created as stats_created,
+                os.modified as stats_modified
+            FROM doctors.opinions_stats os
+            WHERE os.doctor_id = {doctor_id}
+        """,
+        
+        # 7. Dati Google Places (se disponibili)
+        'google_places': f"""
+            SELECT 
+                gpd.id as google_internal_id,
+                gpd.google_place_id,
+                gpd.business_name,
+                gpd.business_status,
+                gpd.rating as google_rating,
+                gpd.reviews_count as google_reviews_count,
+                gpd.phone as google_phone,
+                gpd.email as google_email,
+                gpd.website as google_website,
+                gpd.google_maps_url,
+                gpd.formatted_address as google_address,
+                gpd.latitude as google_latitude,
+                gpd.longitude as google_longitude,
+                gpd.opening_hours,
+                gpd.photos,
+                gpd.types,
+                gpd.reviews as google_reviews,
+                gpd.original_doctor_name,
+                gpd.original_doctor_surname,
+                gpd.enriched_at,
+                gpd.created_at as google_created,
+                gpd.updated_at as google_updated
+            FROM doctors.google_places_data gpd
+            WHERE gpd.doctor_id = {doctor_id} AND gpd.country_code = '{country_code}'
+            ORDER BY gpd.created_at DESC
+        """,
+        
+        # 8. Storico tentativi di arricchimento
+        'enrichment_attempts': f"""
+            SELECT 
+                ea.id as attempt_internal_id,
+                ea.attempt_status,
+                ea.enrichment_source,
+                ea.search_query,
+                ea.doctor_name as attempted_doctor_name,
+                ea.doctor_surname as attempted_doctor_surname,
+                ea.clinic_name as attempted_clinic_name,
+                ea.clinic_address as attempted_clinic_address,
+                ea.google_place_id as attempted_google_place_id,
+                ea.places_found,
+                ea.error_message,
+                ea.attempted_by,
+                ea.attempted_at,
+                ea.processing_time_ms
+            FROM doctors.enrichment_attempts ea
+            WHERE ea.doctor_id = {doctor_id} AND ea.country_code = '{country_code}'
+            ORDER BY ea.attempted_at DESC
+        """,
+        
+        # 9. Numeri di telefono per tutte le cliniche
+        'phone_numbers': f"""
+            SELECT 
+                t.telephone_id,
+                t.clinic_id,
+                t.phone_number,
+                t.created as phone_created,
+                t.modified as phone_modified,
+                c.clinic_name
+            FROM doctors.doctors d
+            JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+            JOIN doctors.telephones t ON dcm.clinic_id = t.clinic_id
+            JOIN doctors.clinics c ON t.clinic_id = c.clinic_id
+            WHERE d.doctor_id = {doctor_id}
+            ORDER BY t.clinic_id, t.telephone_id
+        """
+    }
+    
+    loggerManager.logger.info(f"Complete doctor profile queries for doctor_id: {doctor_id}, country: {country_code}")
+    return queries
