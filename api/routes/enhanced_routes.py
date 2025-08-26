@@ -247,6 +247,7 @@ def search_doctors_advanced():
         max_rate = request_data.get('max_rate')
         has_slots = request_data.get('has_slots')
         allow_questions = request_data.get('allow_questions')
+        enriched_only = request_data.get('enriched_only')
         limit = request_data.get('limit')
         
         # Converti parametri boolean
@@ -254,6 +255,9 @@ def search_doctors_advanced():
             has_slots = str(has_slots).lower() in ['true', '1', 'yes']
         if allow_questions is not None:
             allow_questions = str(allow_questions).lower() in ['true', '1', 'yes']
+      
+        if enriched_only is not None:  # NUOVO
+            enriched_only = str(enriched_only).lower() in ['true', '1', 'yes']
         if min_rate is not None:
             min_rate = int(min_rate)
         if max_rate is not None:
@@ -268,6 +272,7 @@ def search_doctors_advanced():
             has_slots=has_slots,
             allow_questions=allow_questions,
             limit=limit,
+            enriched_only=enriched_only,
             country_code=country
         )
         
@@ -320,6 +325,7 @@ def search_doctors_advanced_by_country(country):
         max_rate = request_data.get('max_rate')
         has_slots = request_data.get('has_slots')
         allow_questions = request_data.get('allow_questions')
+        enriched_only = request_data.get('enriched_only')
         limit = request_data.get('limit')
         
         # Converti parametri boolean
@@ -327,6 +333,8 @@ def search_doctors_advanced_by_country(country):
             has_slots = str(has_slots).lower() in ['true', '1', 'yes']
         if allow_questions is not None:
             allow_questions = str(allow_questions).lower() in ['true', '1', 'yes']
+        if enriched_only is not None:  # NUOVO
+            enriched_only = str(enriched_only).lower() in ['true', '1', 'yes']
         if min_rate is not None:
             min_rate = int(min_rate)
         if max_rate is not None:
@@ -341,6 +349,7 @@ def search_doctors_advanced_by_country(country):
             has_slots=has_slots,
             allow_questions=allow_questions,
             limit=limit,
+            enriched_only=enriched_only,
             country_code=country
         )
         

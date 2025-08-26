@@ -323,7 +323,8 @@ def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='
 
 def search_doctors_advanced_query(search_term=None, city=None, profession=None, 
                                  min_rate=None, max_rate=None, has_slots=None, 
-                                 allow_questions=None, limit=None, country_code='IT'):
+                                 allow_questions=None, limit=None, enriched_only=None, 
+                                 country_code='IT'):
     """
     Advanced search for doctors with multiple filters including services and enrichment status with attempts
     :param search_term: string, search in doctor name
@@ -334,6 +335,7 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
     :param has_slots: boolean, has available slots
     :param allow_questions: boolean, allows questions
     :param limit: int, maximum number of results
+    :param enriched_only: boolean, only doctors with Google Places data
     :param country_code: string, country code (DE, IT)
     :return: SQL query string
     """
@@ -419,6 +421,13 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
     if allow_questions is not None:
         conditions.append(f"d.allow_questions = {allow_questions}")
     
+    # NUOVO: Aggiungi filtro enriched_only
+    if enriched_only is not None:
+        if enriched_only:
+            conditions.append("gpd.google_place_id IS NOT NULL")
+        else:
+            conditions.append("gpd.google_place_id IS NULL")
+    
     if conditions:
         base_query += " AND " + " AND ".join(conditions)
     
@@ -430,7 +439,6 @@ def search_doctors_advanced_query(search_term=None, city=None, profession=None,
     
     loggerManager.logger.info(f"Advanced search query for country {country_code}: {base_query}")
     return base_query
-
 
 def get_doctors_with_slots_query(city=None, profession=None, country_code='IT'):
     """
