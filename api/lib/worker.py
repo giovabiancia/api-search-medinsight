@@ -29,9 +29,7 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
     def _transform_to_api_structure(self, raw_data):
         """
         Trasforma i dati grezzi del database nella struttura API originale
-        includendo lo status di arricchimento Google Places e i servizi nelle responsibilities
-        :param raw_data: dati grezzi dal database
-        :return: lista di dizionari strutturati
+        CORRETTO: Elimina duplicati di doctor_id garantendo un record unico per dottore
         """
         if not raw_data:
             return []
@@ -40,54 +38,71 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
         if isinstance(raw_data, dict):
             raw_data = [raw_data]
 
-        # Raggruppa dati per doctor_id e clinic_id per gestire i servizi correttamente
-        doctors_dict = defaultdict(lambda: {
-            'details': {},
-            'clinics': {},
-            'specializations': {},
-            'services': defaultdict(list),  # Servizi raggruppati per clinic_id
-            'enrichment_info': {}  # Informazioni enrichment Google Places
-        })
+        # Usa un set per tracciare doctor_id già processati
+        processed_doctors = set()
+        items = []
 
         for record in raw_data:
-            doctor_id = record['doctor_id']
-            clinic_id = record.get('clinic_id')
+            doctor_id = record.get['doctor_id']
+            
+            # CORREZIONE: Salta se questo dottore è già stato processato
+            if doctor_id in processed_doctors:
+                continue
+                
+            processed_doctors.add(doctor_id)
 
-            
-            
             # Estrai dettagli dottore
-            if not doctors_dict[doctor_id]['details']:
-                doctors_dict[doctor_id]['details'] = {
-                    'doctor_id': record['doctor_id'],
-                    'salutation': record.get('salutation'),
-                    'given_name': record.get('given_name'),
-                    'surname': record.get('surname'),
-                    'full_name': record.get('full_name'),
-                    'gender': record.get('gender'),
-                    'rate': record.get('rate', 0),
-                    'branding': record.get('branding'),
-                    'has_slots': record.get('has_slots', False),
-                    'allow_questions': record.get('allow_questions', False),
-                    'url': record.get('url'),
-                    # NUOVO: Informazioni enrichment Google Places
-                    'enriched_status': record.get('enriched_status', 'not_enriched'),
-                    'google_place_id': record.get('google_place_id'),
-                    'enriched_at': record.get('enriched_at'),
-                    'last_enrichment_update': record.get('last_enrichment_update'),
-                    'google_business_name': record.get('google_business_name'),
-                    'google_rating': record.get('google_rating'),
-                    'google_reviews_count': record.get('google_reviews_count'),
-                    # Campo di comodo per il frontend
-                    'can_enrich': record.get('enriched_status', 'not_enriched') == 'not_enriched',
-                    "has_enrichment_attempts":record.get('has_enrichment_attempts'),
-                    "last_attempt_status":record.get('last_attempt_status'),
-                    "has_google_places_data":record.get('has_google_places_data'),
-                }
+            doctor_details = {
+                'doctor_id': record.get['doctor_id'],
+                'salutation': record.get('salutation'),
+                'given_name': record.get('given_name'),
+                'surname': record.get('surname'),
+                'full_name': record.get('full_name'),
+                'gender': record.get('gender'),
+                'rate': record.get('rate', 0),
+                'branding': record.get('branding'),
+                'has_slots': record.get('has_slots', False),
+                'allow_questions': record.get('allow_questions', False),
+                'url': record.get('url'),
+                # Informazioni enrichment Google Places
+                'enriched_status': record.get('enriched_status', 'not_enriched'),
+                'google_place_id': record.get('google_place_id'),
+                'enriched_at': record.get('enriched_at'),
+                'last_enrichment_update': record.get('last_enrichment_update'),
+                'google_business_name': record.get('google_business_name'),
+                'google_rating': record.get('google_rating'),
+                'google_reviews_count': record.get('google_reviews_count'),
+                'can_enrich': record.get('enriched_status', 'not_enriched') == 'not_enriched',
+                "has_enrichment_attempts": record.get('has_enrichment_attempts'),
+                "last_attempt_status": record.get('last_attempt_status'),
+                "has_google_places_data": record.get('has_google_places_data'),
+            }
 
-            # Estrai dettagli clinica
-            if clinic_id and clinic_id not in doctors_dict[doctor_id]['clinics']:
-                clinic_data = {
-                    'clinic_id': clinic_id,
+            # Gestisci cliniche (da JSON array o record singolo)
+            clinics = []
+            if 'clinics' in record and record['clinics']:
+                # Se clinics è già un array JSON (dalla query lite)
+                if isinstance(record['clinics'], list):
+                    for clinic_data in record['clinics']:
+                        clinic = {
+                            'clinic_id': clinic_data.get('clinic_id'),
+                            'clinic_name': clinic_data.get('clinic_name'),
+                            'street': clinic_data.get('street'),
+                            'city_name': clinic_data.get('city_name'),
+                            'post_code': clinic_data.get('post_code'),
+                            'province': clinic_data.get('province'),
+                            'latitude': clinic_data.get('latitude'),
+                            'longitude': clinic_data.get('longitude'),
+                            'calendar_active': clinic_data.get('calendar_active', False),
+                            'online_payment': clinic_data.get('online_payment', False),
+                            'doctor_id': doctor_id,
+                            'responsibilities': []  # Popolato dopo con i servizi se disponibili
+                        }
+                        clinics.append(clinic)
+            elif record.get('clinic_id'):
+                # Fallback per record singolo
+                clinic = {
+                    'clinic_id': record.get('clinic_id'),
                     'clinic_name': record.get('clinic_name'),
                     'street': record.get('street'),
                     'city_name': record.get('city_name'),
@@ -97,66 +112,44 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
                     'longitude': record.get('longitude'),
                     'calendar_active': record.get('calendar_active', False),
                     'online_payment': record.get('online_payment', False),
-                    'non_doctor': record.get('non_doctor', False),
-                    'default_fee': record.get('default_fee'),
-                    'fee': record.get('fee'),
-                    'doctor_id': record['doctor_id'],
-                    'responsibilities': []  # Sarà popolato dopo con i servizi
+                    'doctor_id': doctor_id,
+                    'responsibilities': []
                 }
-                
-                # Aggiungi campi specifici per cliniche con slot
-                if 'clinic_has_slots' in record:
-                    clinic_data['has_slots'] = record.get('clinic_has_slots', False)
-                if 'nearest_slot_date' in record:
-                    clinic_data['nearest_slot_date'] = record.get('nearest_slot_date')
-                    
-                doctors_dict[doctor_id]['clinics'][clinic_id] = clinic_data
+                clinics.append(clinic)
 
-            # Estrai dettagli specializzazione
-            if record.get('specialization_name') and record['specialization_name'] not in doctors_dict[doctor_id]['specializations']:
-                doctors_dict[doctor_id]['specializations'][record['specialization_name']] = {
-                    'doctor_id': record['doctor_id'],
+            # Gestisci specializzazioni
+            specializations = []
+            if record.get('primary_specialization'):
+                spec = {
+                    'doctor_id': doctor_id,
+                    'specialization_name': record['primary_specialization'],
+                    'name_plural': record.get('name_plural'),
+                    'is_popular': record.get('is_popular', False),
+                    'count': 1
+                }
+                specializations.append(spec)
+            elif record.get('specialization_name'):
+                spec = {
+                    'doctor_id': doctor_id,
                     'specialization_name': record['specialization_name'],
                     'name_plural': record.get('name_plural'),
                     'is_popular': record.get('is_popular', False),
                     'count': record.get('count', 1)
                 }
+                specializations.append(spec)
 
-            # Estrai servizi/responsabilità
-            if clinic_id and record.get('service_id') and record.get('service_name'):
-                service_data = {
-                    'service_id': record['service_id'],
-                    'service_name': record['service_name'],
-                    'description': record.get('service_description'),
-                    'price': record.get('service_price'),
-                    'price_decimal': record.get('service_price_decimal'),
-                    'is_price_from': record.get('is_price_from', False),
-                    'is_default': record.get('is_default_service', False)
-                }
-                
-                # Evita duplicati per lo stesso servizio nella stessa clinica
-                clinic_services = doctors_dict[doctor_id]['services'][clinic_id]
-                if not any(s['service_id'] == service_data['service_id'] for s in clinic_services):
-                    clinic_services.append(service_data)
-
-        # Converti nella struttura API finale
-        items = []
-        for doctor_id, doctor_data in doctors_dict.items():
-            # Popola responsibilities per ogni clinica
-            for clinic_id, clinic_info in doctor_data['clinics'].items():
-                services = doctor_data['services'].get(clinic_id, [])
-                clinic_info['responsibilities'] = services
-
+            # Costruisci item finale
             item = {
-                'details': doctor_data['details'],
-                'clinics': list(doctor_data['clinics'].values()),
-                'specializations': list(doctor_data['specializations'].values())
+                'details': doctor_details,
+                'clinics': clinics,
+                'specializations': specializations
             }
+            
             items.append(item)
 
         return items
 
-
+    
     def get_specializations(self):
         """
         Ottiene tutte le specializzazioni disponibili

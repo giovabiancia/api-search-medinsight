@@ -1694,3 +1694,239 @@ def get_complete_doctor_profile_by_country(country, doctor_id):
     
     return jsonify(output), status_code
 
+
+
+@enhanced_bp.route('/doctors/search/lite', methods=('GET', 'POST'))
+def search_doctors_lite():
+    """Ricerca LITE dottori - versione gratuita con informazioni ridotte"""
+    request_data = util.process_request(request)
+    country = validate_country_and_connection(request_data.get('country', 'IT'))
+    
+    try:
+        # Estrai TUTTI i parametri come nella versione premium
+        search_term = request_data.get('search_term')
+        city = request_data.get('city')
+        profession = request_data.get('profession')
+        min_rate = request_data.get('min_rate')
+        max_rate = request_data.get('max_rate')
+        has_slots = request_data.get('has_slots')
+        allow_questions = request_data.get('allow_questions')
+        enriched_only = request_data.get('enriched_only')  # AGGIUNTO
+        limit = request_data.get('limit', 1000)  # Limite default per versione gratuita
+        
+        # Converti parametri boolean (stessa logica premium)
+        if has_slots is not None:
+            has_slots = str(has_slots).lower() in ['true', '1', 'yes']
+        if allow_questions is not None:
+            allow_questions = str(allow_questions).lower() in ['true', '1', 'yes']
+        if enriched_only is not None:  # AGGIUNTO
+            enriched_only = str(enriched_only).lower() in ['true', '1', 'yes']
+        if min_rate is not None:
+            min_rate = int(min_rate)
+        if max_rate is not None:
+            max_rate = int(max_rate)
+        if limit is not None:
+            limit = min(int(limit), 1000)  # Massimo 50 risultati per versione gratuita
+        
+        # Usa query lite con TUTTI i parametri
+        query = sql_queries.search_doctors_lite_query(
+            search_term=search_term,
+            city=city,
+            profession=profession,
+            min_rate=min_rate,
+            max_rate=max_rate,
+            has_slots=has_slots,
+            allow_questions=allow_questions,
+            enriched_only=enriched_only,  # AGGIUNTO
+            limit=limit,
+            country_code=country
+        )
+        
+        result = execute_query_for_country(query, country)
+        
+        # Trasforma i risultati in formato lite
+        lite_results = []
+        if result:
+            if isinstance(result, dict):
+                result = [result]
+            
+            for doctor in result:
+               
+                lite_doctor = {
+                    'doctor_id': doctor['doctor_id'],
+                    'full_name': doctor['full_name'],
+                    'rate': doctor['rate'],
+                    'has_slots': doctor['has_slots'],
+                    'allow_questions': doctor['allow_questions'],
+                    'primary_city': doctor.get('primary_city'),
+                    'primary_specialization': doctor.get('primary_specialization'),
+                    # Informazioni arricchimento (cruciali per upselling)
+                    'enrichment_status': doctor['enrichment_status'],
+                    'has_google_data': doctor['has_google_data'],
+                    'google_rating': doctor.get('google_rating'),
+                    'google_reviews_count': doctor.get('google_reviews_count'),
+                    'onlyne_payment': doctor.get('onlyne_payment'),
+                    'street': doctor.get('street'),
+                    'city_name': doctor.get('city_name'),
+                    'clinic_name': doctor.get('clinic_name'),
+                    'latitude': doctor.get('latitude'),
+                    'longitude': doctor.get('longitude'),
+                    'clinics': doctor.get('clinics'),
+                    # Flag per upgrade
+                    'upgrade_available': doctor['has_google_data'],  # Se ha dati Google, upgrade disponibile
+                }
+                lite_results.append(lite_doctor)
+        
+        output = {
+            "items": lite_results,
+            "country": country,
+            "version": "lite",
+            "filters": {
+                "search_term": search_term,
+                "city": city,
+                "profession": profession,
+                "min_rate": min_rate,
+                "max_rate": max_rate,
+                "has_slots": has_slots,
+                "allow_questions": allow_questions,
+                "enriched_only": enriched_only  # AGGIUNTO
+            },
+            "total": len(lite_results),
+            "limit": limit,
+            "upgrade_info": {
+                "message": "For complete doctor profiles with clinics, services, and detailed information, upgrade to premium API",
+                "premium_endpoint": "/doctors/search",
+                "enriched_doctors_available": len([d for d in lite_results if d['has_google_data']]),
+                "benefits": [
+                    "Complete clinic addresses and contact details",
+                    "All services with pricing information",
+                    "Patient reviews and detailed statistics",
+                    "Google Maps integration data"
+                ]
+            }
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in search_doctors_lite: {e}")
+        output = {
+            "error": "Error in lite search",
+            "country": country,
+            "version": "lite",
+            "items": []
+        }
+    
+    return jsonify(output)
+
+
+@enhanced_bp.route('/<country>/doctors/search/lite', methods=('GET', 'POST'))
+def search_doctors_lite_by_country(country):
+    """Ricerca LITE dottori per paese specifico - versione gratuita"""
+    country = validate_country_and_connection(country)
+    request_data = util.process_request(request)
+    
+    try:
+        # Estrai TUTTI i parametri come nella versione premium
+        search_term = request_data.get('search_term')
+        city = request_data.get('city')
+        profession = request_data.get('profession')
+        min_rate = request_data.get('min_rate')
+        max_rate = request_data.get('max_rate')
+        has_slots = request_data.get('has_slots')
+        allow_questions = request_data.get('allow_questions')
+        enriched_only = request_data.get('enriched_only')  # AGGIUNTO
+        limit = request_data.get('limit', 20)  # Limite default per versione gratuita
+        
+        # Converti parametri boolean (stessa logica premium)
+        if has_slots is not None:
+            has_slots = str(has_slots).lower() in ['true', '1', 'yes']
+        if allow_questions is not None:
+            allow_questions = str(allow_questions).lower() in ['true', '1', 'yes']
+        if enriched_only is not None:  # AGGIUNTO
+            enriched_only = str(enriched_only).lower() in ['true', '1', 'yes']
+        if min_rate is not None:
+            min_rate = int(min_rate)
+        if max_rate is not None:
+            max_rate = int(max_rate)
+        if limit is not None:
+            limit = min(int(limit), 1000)  # Massimo 1000 risultati per versione gratuita
+        
+        # Usa query lite con TUTTI i parametri
+        query = sql_queries.search_doctors_lite_query(
+            search_term=search_term,
+            city=city,
+            profession=profession,
+            min_rate=min_rate,
+            max_rate=max_rate,
+            has_slots=has_slots,
+            allow_questions=allow_questions,
+            enriched_only=enriched_only,  # AGGIUNTO
+            limit=limit,
+            country_code=country
+        )
+        
+        result = execute_query_for_country(query, country)
+        
+        # Trasforma i risultati in formato lite
+        lite_results = []
+        if result:
+            if isinstance(result, dict):
+                result = [result]
+            
+            for doctor in result:
+                lite_doctor = {
+                    'doctor_id': doctor['doctor_id'],
+                    'full_name': doctor['full_name'],
+                    'rate': doctor['rate'],
+                    'has_slots': doctor['has_slots'],
+                    'allow_questions': doctor['allow_questions'],
+                    'primary_city': doctor.get('primary_city'),
+                    'primary_specialization': doctor.get('primary_specialization'),
+                    'enrichment_status': doctor['enrichment_status'],
+                    'has_google_data': doctor['has_google_data'],
+                    'google_rating': doctor.get('google_rating'),
+                    'google_reviews_count': doctor.get('google_reviews_count'),
+                    'upgrade_available': doctor['has_google_data']
+                }
+                lite_results.append(lite_doctor)
+        
+        output = {
+            "items": lite_results,
+            "country": country,
+            "version": "lite",
+            "filters": {
+                "search_term": search_term,
+                "city": city,
+                "profession": profession,
+                "min_rate": min_rate,
+                "max_rate": max_rate,
+                "has_slots": has_slots,
+                "allow_questions": allow_questions,
+                "enriched_only": enriched_only  # AGGIUNTO
+            },
+            "total": len(lite_results),
+            "limit": limit,
+            "upgrade_info": {
+                "message": "Upgrade to premium for complete profiles with clinics, services, contact details",
+                "premium_endpoint": f"/{country}/doctors/search",
+                "enriched_doctors_available": len([d for d in lite_results if d['has_google_data']]),
+                "benefits": [
+                    "Complete clinic information with addresses",
+                    "All services and pricing",
+                    "Contact details and phone numbers", 
+                    "Complete specializations list",
+                    "Patient reviews and detailed ratings",
+                    "Google Places enriched data (maps, hours, photos)"
+                ]
+            }
+        }
+        
+    except Exception as e:
+        loggerManager.logger.error(f"Error in search_doctors_lite_by_country: {e}")
+        output = {
+            "error": "Error in lite search",
+            "country": country,
+            "version": "lite",
+            "items": []
+        }
+    
+    return jsonify(output)

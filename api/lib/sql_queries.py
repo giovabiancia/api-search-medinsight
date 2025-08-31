@@ -13,6 +13,132 @@
 
 from api.lib import loggerManager
 
+def search_doctors_lite_query(
+    search_term=None, city=None, profession=None, 
+    min_rate=None, max_rate=None, has_slots=None, 
+    allow_questions=None, limit=None, enriched_only=None,
+    country_code='IT'
+):
+    """
+    Query lite con TUTTI i filtri della versione premium
+    + restituisce tutte le cliniche come array JSON
+    CORRETTO: Elimina duplicati di doctor_id
+    """
+    
+    base_query = f"""
+        SELECT 
+            d.doctor_id, 
+            d.full_name, 
+            d.rate, 
+            d.has_slots, 
+            d.allow_questions,
+            -- Tutte le cliniche come array JSON
+            COALESCE(
+                json_agg(
+                    DISTINCT jsonb_build_object(
+                        'clinic_id', c.clinic_id,
+                        'clinic_name', c.clinic_name,
+                        'street', c.street,
+                        'city_name', c.city_name,
+                        'post_code', c.post_code,
+                        'province', c.province,
+                        'latitude', c.latitude,
+                        'longitude', c.longitude,
+                        'calendar_active', c.calendar_active,
+                        'online_payment', c.online_payment
+                    )
+                ) FILTER (WHERE c.clinic_id IS NOT NULL),
+                '[]'
+            ) as clinics,
+            -- Specializzazione principale (più popolare o prima)
+            (SELECT s.specialization_name
+             FROM doctors.doctors_specializations_map dsm
+             JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
+             WHERE dsm.doctor_id = d.doctor_id
+             ORDER BY s.is_popular DESC, s.specialization_name
+             LIMIT 1) as primary_specialization,
+            -- Stato arricchimento Google
+            CASE 
+                WHEN gpd.google_place_id IS NOT NULL THEN 'enriched'
+                WHEN ea.id IS NOT NULL AND ea.attempt_status = 'success' THEN 'enriched'
+                WHEN ea.id IS NOT NULL AND ea.attempt_status IN ('failed', 'error', 'no_results') THEN 'attempted_failed'
+                WHEN ea.id IS NOT NULL THEN 'attempted'
+                ELSE 'never_attempted'
+            END as enrichment_status,
+            -- Flag Google
+            CASE WHEN gpd.google_place_id IS NOT NULL THEN true ELSE false END as has_google_data,
+            -- Rating Google
+            gpd.rating as google_rating,
+            gpd.reviews_count as google_reviews_count
+        FROM doctors.doctors d
+        LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
+        LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
+        LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
+        LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
+        LEFT JOIN doctors.google_places_data gpd ON d.doctor_id = gpd.doctor_id
+        LEFT JOIN doctors.enrichment_attempts ea 
+               ON (d.doctor_id = ea.doctor_id AND ea.country_code = '{country_code}' AND ea.enrichment_source = 'google_places')
+        WHERE 1=1
+    """
+
+    conditions = []
+
+    if search_term:
+        search_term = search_term.replace("'", "''")
+        conditions.append(f"(UPPER(d.full_name) LIKE UPPER('%{search_term}%') OR UPPER(d.given_name) LIKE UPPER('%{search_term}%') OR UPPER(d.surname) LIKE UPPER('%{search_term}%'))")
+
+    if city:
+        city = city.upper().replace("'", "''")
+        conditions.append(f"UPPER(c.city_name) = '{city}'")
+
+    if profession:
+        profession = profession.upper().replace("'", "''")
+        conditions.append(f"UPPER(s.specialization_name) = '{profession}'")
+
+    if min_rate is not None:
+        conditions.append(f"d.rate >= {min_rate}")
+
+    if max_rate is not None:
+        conditions.append(f"d.rate <= {max_rate}")
+
+    if has_slots is not None:
+        conditions.append(f"d.has_slots = {has_slots}")
+
+    if allow_questions is not None:
+        conditions.append(f"d.allow_questions = {allow_questions}")
+
+    if enriched_only is not None:
+        if enriched_only:
+            conditions.append("gpd.google_place_id IS NOT NULL")
+        else:
+            conditions.append("gpd.google_place_id IS NULL")
+
+    if conditions:
+        base_query += " AND " + " AND ".join(conditions)
+
+    # CORREZIONE PRINCIPALE: GROUP BY per eliminare duplicati
+    base_query += """
+        GROUP BY 
+            d.doctor_id, 
+            d.full_name, 
+            d.rate, 
+            d.has_slots, 
+            d.allow_questions,
+            gpd.google_place_id, 
+            gpd.rating, 
+            gpd.reviews_count, 
+            ea.id, 
+            ea.attempt_status
+        ORDER BY d.rate DESC, d.doctor_id
+    """
+
+    if limit is None:
+        limit = 1000
+    base_query += f" LIMIT {limit}"
+
+    loggerManager.logger.info(f"Lite search query for country {country_code}: {base_query}")
+    return base_query
+
 
 def get_doctors_query(doctor_id=None, city=None, profession=None, country_code='IT'):
     """
