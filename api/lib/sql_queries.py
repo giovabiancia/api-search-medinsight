@@ -20,118 +20,169 @@ def search_doctors_lite_query(
     country_code='IT'
 ):
     """
-    Query lite con TUTTI i filtri della versione premium
-    + restituisce tutte le cliniche come array JSON
-    CORRETTO: Elimina duplicati di doctor_id
+    Query lite CORRETTA che elimina completamente i duplicati di doctor_id
     """
     
     base_query = f"""
+        WITH doctor_base AS (
+            SELECT DISTINCT
+                d.doctor_id, 
+                d.full_name, 
+                d.rate, 
+                d.has_slots, 
+                d.allow_questions
+            FROM doctors.doctors d
+        )
         SELECT 
-            d.doctor_id, 
-            d.full_name, 
-            d.rate, 
-            d.has_slots, 
-            d.allow_questions,
-            -- Tutte le cliniche come array JSON
-            COALESCE(
-                json_agg(
-                    DISTINCT jsonb_build_object(
-                        'clinic_id', c.clinic_id,
-                        'clinic_name', c.clinic_name,
-                        'street', c.street,
-                        'city_name', c.city_name,
-                        'post_code', c.post_code,
-                        'province', c.province,
-                        'latitude', c.latitude,
-                        'longitude', c.longitude,
-                        'calendar_active', c.calendar_active,
-                        'online_payment', c.online_payment
-                    )
-                ) FILTER (WHERE c.clinic_id IS NOT NULL),
-                '[]'
-            ) as clinics,
-            -- Specializzazione principale (più popolare o prima)
-            (SELECT s.specialization_name
-             FROM doctors.doctors_specializations_map dsm
-             JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
-             WHERE dsm.doctor_id = d.doctor_id
-             ORDER BY s.is_popular DESC, s.specialization_name
+            db.doctor_id, 
+            db.full_name, 
+            db.rate, 
+            db.has_slots, 
+            db.allow_questions,
+            -- Città principale
+            (SELECT c_sub.city_name
+             FROM doctors.doctors_clinics_map dcm_sub
+             JOIN doctors.clinics c_sub ON dcm_sub.clinic_id = c_sub.clinic_id
+             WHERE dcm_sub.doctor_id = db.doctor_id
+             ORDER BY c_sub.clinic_id
+             LIMIT 1) as primary_city,
+            -- Specializzazione principale
+            (SELECT s_sub.specialization_name
+             FROM doctors.doctors_specializations_map dsm_sub
+             JOIN doctors.specializations s_sub ON dsm_sub.specialization_id = s_sub.specialization_id
+             WHERE dsm_sub.doctor_id = db.doctor_id
+             ORDER BY s_sub.is_popular DESC, s_sub.specialization_name
              LIMIT 1) as primary_specialization,
-            -- Stato arricchimento Google
-            CASE 
-                WHEN gpd.google_place_id IS NOT NULL THEN 'enriched'
-                WHEN ea.id IS NOT NULL AND ea.attempt_status = 'success' THEN 'enriched'
-                WHEN ea.id IS NOT NULL AND ea.attempt_status IN ('failed', 'error', 'no_results') THEN 'attempted_failed'
-                WHEN ea.id IS NOT NULL THEN 'attempted'
-                ELSE 'never_attempted'
-            END as enrichment_status,
+            -- Cliniche come JSON array
+            (SELECT COALESCE(
+                json_agg(
+                    jsonb_build_object(
+                        'clinic_id', c_json.clinic_id,
+                        'clinic_name', c_json.clinic_name,
+                        'street', c_json.street,
+                        'city_name', c_json.city_name,
+                        'post_code', c_json.post_code,
+                        'province', c_json.province,
+                        'latitude', c_json.latitude,
+                        'longitude', c_json.longitude,
+                        'calendar_active', c_json.calendar_active,
+                        'online_payment', c_json.online_payment
+                    )
+                ),
+                '[]'::json
+            )
+            FROM doctors.doctors_clinics_map dcm_json
+            JOIN doctors.clinics c_json ON dcm_json.clinic_id = c_json.clinic_id
+            WHERE dcm_json.doctor_id = db.doctor_id
+            ) as clinics,
+            -- Stato arricchimento
+            (SELECT 
+                CASE 
+                    WHEN gpd_sub.google_place_id IS NOT NULL THEN 'enriched'
+                    WHEN ea_sub.id IS NOT NULL AND ea_sub.attempt_status = 'success' THEN 'enriched'
+                    WHEN ea_sub.id IS NOT NULL AND ea_sub.attempt_status IN ('failed', 'error', 'no_results') THEN 'attempted_failed'
+                    WHEN ea_sub.id IS NOT NULL THEN 'attempted'
+                    ELSE 'never_attempted'
+                END
+            FROM doctors.doctors d_sub
+            LEFT JOIN doctors.google_places_data gpd_sub ON d_sub.doctor_id = gpd_sub.doctor_id
+            LEFT JOIN doctors.enrichment_attempts ea_sub ON (
+                d_sub.doctor_id = ea_sub.doctor_id 
+                AND ea_sub.country_code = '{country_code}' 
+                AND ea_sub.enrichment_source = 'google_places'
+            )
+            WHERE d_sub.doctor_id = db.doctor_id
+            LIMIT 1
+            ) as enrichment_status,
             -- Flag Google
-            CASE WHEN gpd.google_place_id IS NOT NULL THEN true ELSE false END as has_google_data,
+            (SELECT 
+                CASE WHEN gpd_flag.google_place_id IS NOT NULL THEN true ELSE false END
+            FROM doctors.google_places_data gpd_flag
+            WHERE gpd_flag.doctor_id = db.doctor_id
+            LIMIT 1
+            ) as has_google_data,
             -- Rating Google
-            gpd.rating as google_rating,
-            gpd.reviews_count as google_reviews_count
-        FROM doctors.doctors d
-        LEFT JOIN doctors.doctors_clinics_map dcm ON d.doctor_id = dcm.doctor_id
-        LEFT JOIN doctors.clinics c ON dcm.clinic_id = c.clinic_id
-        LEFT JOIN doctors.doctors_specializations_map dsm ON d.doctor_id = dsm.doctor_id
-        LEFT JOIN doctors.specializations s ON dsm.specialization_id = s.specialization_id
-        LEFT JOIN doctors.google_places_data gpd ON d.doctor_id = gpd.doctor_id
-        LEFT JOIN doctors.enrichment_attempts ea 
-               ON (d.doctor_id = ea.doctor_id AND ea.country_code = '{country_code}' AND ea.enrichment_source = 'google_places')
-        WHERE 1=1
+            (SELECT gpd_rating.rating
+            FROM doctors.google_places_data gpd_rating
+            WHERE gpd_rating.doctor_id = db.doctor_id
+            LIMIT 1
+            ) as google_rating,
+            -- Reviews count Google
+            (SELECT gpd_reviews.reviews_count
+            FROM doctors.google_places_data gpd_reviews
+            WHERE gpd_reviews.doctor_id = db.doctor_id
+            LIMIT 1
+            ) as google_reviews_count
+        FROM doctor_base db
     """
 
-    conditions = []
-
+    # Add WHERE conditions to the CTE
+    doctor_filters = []
+    
     if search_term:
         search_term = search_term.replace("'", "''")
-        conditions.append(f"(UPPER(d.full_name) LIKE UPPER('%{search_term}%') OR UPPER(d.given_name) LIKE UPPER('%{search_term}%') OR UPPER(d.surname) LIKE UPPER('%{search_term}%'))")
+        doctor_filters.append(f"(UPPER(d.full_name) LIKE UPPER('%{search_term}%') OR UPPER(d.given_name) LIKE UPPER('%{search_term}%') OR UPPER(d.surname) LIKE UPPER('%{search_term}%'))")
+
+    if min_rate is not None:
+        doctor_filters.append(f"d.rate >= {min_rate}")
+
+    if max_rate is not None:
+        doctor_filters.append(f"d.rate <= {max_rate}")
+
+    if has_slots is not None:
+        doctor_filters.append(f"d.has_slots = {has_slots}")
+
+    if allow_questions is not None:
+        doctor_filters.append(f"d.allow_questions = {allow_questions}")
+
+    # Apply doctor-level filters to the CTE
+    if doctor_filters:
+        base_query = base_query.replace(
+            "FROM doctors.doctors d",
+            f"FROM doctors.doctors d WHERE " + " AND ".join(doctor_filters)
+        )
+
+    # Where conditions for the main query
+    conditions = ["1=1"]
 
     if city:
         city = city.upper().replace("'", "''")
-        conditions.append(f"UPPER(c.city_name) = '{city}'")
+        conditions.append(f"""db.doctor_id IN (
+            SELECT dcm_city.doctor_id 
+            FROM doctors.doctors_clinics_map dcm_city
+            JOIN doctors.clinics c_city ON dcm_city.clinic_id = c_city.clinic_id
+            WHERE UPPER(c_city.city_name) = '{city}'
+        )""")
 
     if profession:
         profession = profession.upper().replace("'", "''")
-        conditions.append(f"UPPER(s.specialization_name) = '{profession}'")
-
-    if min_rate is not None:
-        conditions.append(f"d.rate >= {min_rate}")
-
-    if max_rate is not None:
-        conditions.append(f"d.rate <= {max_rate}")
-
-    if has_slots is not None:
-        conditions.append(f"d.has_slots = {has_slots}")
-
-    if allow_questions is not None:
-        conditions.append(f"d.allow_questions = {allow_questions}")
+        conditions.append(f"""db.doctor_id IN (
+            SELECT dsm_prof.doctor_id 
+            FROM doctors.doctors_specializations_map dsm_prof
+            JOIN doctors.specializations s_prof ON dsm_prof.specialization_id = s_prof.specialization_id
+            WHERE UPPER(s_prof.specialization_name) = '{profession}'
+        )""")
 
     if enriched_only is not None:
         if enriched_only:
-            conditions.append("gpd.google_place_id IS NOT NULL")
+            conditions.append(f"""db.doctor_id IN (
+                SELECT gpd_enr.doctor_id 
+                FROM doctors.google_places_data gpd_enr 
+                WHERE gpd_enr.doctor_id IS NOT NULL
+            )""")
         else:
-            conditions.append("gpd.google_place_id IS NULL")
+            conditions.append(f"""db.doctor_id NOT IN (
+                SELECT gpd_not.doctor_id 
+                FROM doctors.google_places_data gpd_not 
+                WHERE gpd_not.doctor_id IS NOT NULL
+            )""")
 
-    if conditions:
-        base_query += " AND " + " AND ".join(conditions)
-
-    # CORREZIONE PRINCIPALE: GROUP BY per eliminare duplicati
-    base_query += """
-        GROUP BY 
-            d.doctor_id, 
-            d.full_name, 
-            d.rate, 
-            d.has_slots, 
-            d.allow_questions,
-            gpd.google_place_id, 
-            gpd.rating, 
-            gpd.reviews_count, 
-            ea.id, 
-            ea.attempt_status
-        ORDER BY d.rate DESC, d.doctor_id
-    """
-
+    # Add WHERE clause
+    base_query += " WHERE " + " AND ".join(conditions)
+    
+    # Order and limit
+    base_query += " ORDER BY db.rate DESC, db.doctor_id"
+    
     if limit is None:
         limit = 1000
     base_query += f" LIMIT {limit}"

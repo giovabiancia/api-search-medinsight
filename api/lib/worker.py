@@ -25,7 +25,6 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
         self.country_code = country_code.upper()
         self.result_data = None
         self.operation_successful = False
-
     def _transform_to_api_structure(self, raw_data):
         """
         Trasforma i dati grezzi del database nella struttura API originale
@@ -43,7 +42,7 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
         items = []
 
         for record in raw_data:
-            doctor_id = record.get['doctor_id']
+            doctor_id = record['doctor_id']
             
             # CORREZIONE: Salta se questo dottore è già stato processato
             if doctor_id in processed_doctors:
@@ -53,7 +52,7 @@ class EnhancedMedicalWorker(filter.DoctorsFilter, database_manager.ExecuteQuerie
 
             # Estrai dettagli dottore
             doctor_details = {
-                'doctor_id': record.get['doctor_id'],
+                'doctor_id': record['doctor_id'],
                 'salutation': record.get('salutation'),
                 'given_name': record.get('given_name'),
                 'surname': record.get('surname'),
